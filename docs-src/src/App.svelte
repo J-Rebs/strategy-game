@@ -625,6 +625,8 @@ fn round(q: f32, r: f32) -> HexCoord {
     margin-bottom: 2rem;
     box-shadow: 0 8px 24px rgba(159, 211, 211, 0.08);
     transition: all 0.3s ease;
+    overflow: hidden;
+    max-width: 100%;
   }
 
   .card:hover {
@@ -716,14 +718,22 @@ fn round(q: f32, r: f32) -> HexCoord {
 
   @media (max-width: 950px) {
     .container {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr;
+      display: flex;
+      flex-direction: column;
+      height: auto;
+      min-height: 100vh;
+      overflow: visible;
     }
 
     .sidebar {
-      padding: 1.5rem;
+      padding: 1rem 1.25rem;
       border-right: none;
       border-bottom: 1px solid var(--border-color);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background-color: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
     }
 
     .sidebar .sidebar-footer {
@@ -731,29 +741,52 @@ fn round(q: f32, r: f32) -> HexCoord {
     }
 
     .logo-area {
-      margin-bottom: 1.5rem;
+      margin-bottom: 0.75rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 1rem;
+      gap: 0.75rem;
     }
 
     .logo-svg {
       margin: 0;
+      width: 32px;
+      height: 32px;
+    }
+
+    .logo-area h1 {
+      font-size: 1.1rem;
+      margin: 0;
+    }
+
+    .logo-area .sub {
+      display: none;
     }
 
     .nav-links {
       flex-direction: row;
       overflow-x: auto;
-      padding-bottom: 0.5rem;
+      padding-bottom: 0.25rem;
+      gap: 0.25rem;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+
+    .nav-links::-webkit-scrollbar {
+      display: none;
     }
 
     .nav-btn {
       white-space: nowrap;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
     }
 
     .content-area {
-      padding: 2rem;
+      padding: 2rem 1.5rem;
+      height: auto;
+      overflow-y: visible;
+      flex: 1;
     }
 
     .grid-2 {
@@ -798,33 +831,48 @@ fn round(q: f32, r: f32) -> HexCoord {
 
   @media (max-width: 650px) {
     .content-area {
-      padding: 2rem 1.25rem;
+      padding: 1.5rem 1rem;
     }
 
     h2 {
-      font-size: 1.75rem;
+      font-size: 1.5rem;
     }
 
     .subtitle {
-      font-size: 0.9rem;
-      margin-bottom: 1.75rem;
-    }
-
-    .card {
-      padding: 1.25rem;
+      font-size: 0.85rem;
       margin-bottom: 1.25rem;
     }
 
+    .card {
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
     .card-header h3 {
-      font-size: 1.15rem;
+      font-size: 1rem;
     }
 
     pre {
-      padding: 1rem;
+      padding: 0.75rem;
+      font-size: 0.75rem;
     }
 
     code {
+      font-size: 0.75rem;
+    }
+
+    .logo-svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .nav-btn {
+      padding: 0.4rem 0.6rem;
       font-size: 0.8rem;
+    }
+
+    .btn-icon {
+      display: none;
     }
   }
 </style>
