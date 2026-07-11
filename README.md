@@ -1,0 +1,46 @@
+# PacketCommand
+
+A modern, abstract, blocky real-time strategy (RTS) game written in **Rust** using the **Bevy** engine. 
+
+In **PacketCommand**, you build and secure a network grid, making strategic topology and resource allocation trade-offs to out-compete and dominate the network against a Computer AI opponent.
+
+---
+
+## 🎮 Gameplay & Strategic Trade-offs
+
+The game is grounded in real computer networking concepts. You build connections, configure routing, lay down security policies, and manage server queue congestion:
+
+1. **Network Topologies**:
+   - **Star**: Lay a fast central Switch. Cheap to link, low latency, but a single point of failure.
+   - **Mesh**: Connect nodes redundantly. Highly resilient to cuts and DDoS, but expensive.
+   - **Ring/Bus**: Linear chain of nodes. Very cheap to build, but high latency and easily partitioned.
+
+2. **Physical Links**:
+   - **Fiber Optic**: Maximum bandwidth, near-instant propagation, high cost.
+   - **Copper**: Moderate bandwidth, higher latency, cheap to lay.
+   - **Wireless**: Instant deployment (no cables), moderate bandwidth, high packet loss / error rates.
+
+3. **Resource Nodes (Competitive Hubs)**:
+   - **Data Centers (DCs)**: Generate passive Bandwidth currency when processing Client requests.
+   - **Internet Exchanges (IXPs)**: Boost performance of connected links (2x speed multiplier).
+   - **Content Delivery Networks (CDNs)**: Cache data locally, reducing RTT (Round Trip Time).
+
+4. **Win Condition**:
+   - Dominate the network by capturing the neutral Data Centers and either compromising the opponent's Gateway or partitioning their network to starve them of bandwidth currency.
+
+---
+
+## 🛠️ Development & Compilation
+
+### Requirements
+- **Rust (v1.80+)**
+- **macOS ARM (Apple Silicon)** or any platform supported by Bevy.
+
+### Run Locally
+To compile and run the desktop application natively:
+```bash
+cargo run
+```
+
+### Dev Optimizations
+To keep incremental compilation times under 3 seconds, the project is configured to use Bevy's `dynamic_linking` feature and high dependency optimization overrides in `Cargo.toml`.
