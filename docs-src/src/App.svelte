@@ -148,9 +148,9 @@ fn round(q: f32, r: f32) -> HexCoord {
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />
             </svg>
-            <h3>Work in Progress and Review Required</h3>
+            <h3>Active Alpha Stage</h3>
           </div>
-          <p>The basic game starts up and compiles successfully, but not all mechanics are fully functional. This developer documentation is currently AI-generated and requires review for accuracy as the game features evolve.</p>
+          <p>The basic game compiles and runs, but mechanics are still under development. This developer documentation is currently AI-generated and requires review.</p>
         </div>
 
         <p class="paragraph">Welcome to the developer documentation hub for PacketCommand, an undersea real-time network strategy simulation game. The player builds nodes, lays cables, and competes for central Data Centers in a vibrant, bioluminescent coral reef setting.</p>
