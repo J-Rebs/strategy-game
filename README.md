@@ -49,10 +49,19 @@ To keep incremental compilation times under 3 seconds, the project is configured
 
 ## 📚 Developer Documentation
 
-We provide a beautiful, custom developer documentation website inside the `/docs` folder that explains the Rust architecture, Bevy ECS systems, borrowing panic solutions, and hexagonal math.
+We provide a beautiful, custom developer documentation website inside the `/docs` folder that explains the Rust architecture, Bevy ECS systems, borrowing panic solutions, and hexagonal math. 
+
+The website is built with **Svelte 5** and utilizes a light pastel ocean theme with custom inline SVG graphics (no emojis).
+
+### Build from Source
+The source files are located in `docs-src/`. To compile changes into the `/docs` folder:
+```bash
+cd docs-src
+npm run build
+```
 
 ### Spin Up Documentation Locally
-You can spin up the documentation site locally using any simple HTTP server:
+Once built, you can spin up the documentation site locally using any simple HTTP server:
 
 **Using Python:**
 ```bash
@@ -65,14 +74,9 @@ Then open [http://localhost:8080](http://localhost:8080) in your browser.
 npx -y serve docs
 ```
 
-**Alternative:**
-Simply double-click the [docs/index.html](file:///Users/joe/Documents/projects/strategy-game/docs/index.html) file to open it directly in any web browser.
-
 ### Deploy to GitHub Pages
 To publish the documentation site to GitHub Pages:
 1. Go to your repository settings on GitHub.
 2. Select **Pages** in the left sidebar.
-3. Under **Build and deployment -> Source**, select **Deploy from a branch**.
-4. Set the branch to `main` and choose the `/docs` folder.
-5. Click **Save**. GitHub will automatically publish the documentation site.
+3. Under **Build and deployment -> Source**, select **GitHub Actions**. The automated workflow will automatically compile and deploy the site from the `/docs` folder on push!
 
