@@ -63,8 +63,8 @@ fn round(q: f32, r: f32) -> HexCoord {
       >
         <span class="btn-icon">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 22h20L12 2z" stroke-linejoin="round" />
-            <circle cx="12" cy="14" r="3" />
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
           </svg>
         </span>
         Introduction
@@ -127,7 +127,9 @@ fn round(q: f32, r: f32) -> HexCoord {
     </nav>
 
     <div class="sidebar-footer">
-      <p>Built with Svelte 5</p>
+      <p>Docs built with Svelte</p>
+      <p>Game built with Rust</p>
+      <p class="coordinator">Coordinated with Antigravity</p>
     </div>
   </aside>
 
@@ -520,7 +522,16 @@ fn round(q: f32, r: f32) -> HexCoord {
     color: var(--text-secondary);
     text-align: center;
     border-top: 1px solid var(--border-color);
-    padding-top: 1.5rem;
+    padding-top: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .sidebar-footer .coordinator {
+    font-weight: 600;
+    color: var(--aqua);
+    margin-top: 0.25rem;
   }
 
   .content-area {
