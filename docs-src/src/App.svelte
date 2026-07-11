@@ -155,6 +155,19 @@ fn round(q: f32, r: f32) -> HexCoord {
         
         <div class="card">
           <div class="card-header">
+            <!-- Custom SVG drawing representing a target/philosophy -->
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#9FD3D3" stroke-width="2" class="header-icon">
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="6" />
+              <circle cx="12" cy="12" r="2" />
+            </svg>
+            <h3>Project Philosophy and Goals</h3>
+          </div>
+          <p>The primary purpose of PacketCommand is to help contributors learn how to effectively write code and learn in collaboration with AI. The overarching goal is to help engineers learn how to move quicker while constantly improving their own core understanding. We take as our guide the continuous, iterative improvement of the engineer, the engineer's use of AI tools, and the game itself.</p>
+        </div>
+        
+        <div class="card">
+          <div class="card-header">
             <!-- Custom SVG drawing representing a light bulb / concept -->
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#9FD3D3" stroke-width="2" class="header-icon">
               <circle cx="12" cy="12" r="10" />
