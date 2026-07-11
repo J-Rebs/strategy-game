@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PacketCommand // Developer Documentation</title>
+    <meta name="description" content="Technical documentation and architecture overview for PacketCommand, an ocean-themed hexagonal network strategy game built in Rust with Bevy.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="glow-bg"></div>
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>PacketCommand //</h1>
+                <span>Dev Docs Hub</span>
+            </div>
+            <nav class="nav-links">
+                <button class="nav-btn active" data-target="intro">🌊 Introduction</button>
+                <button class="nav-btn" data-target="ecs">🧩 Bevy ECS Engine</button>
+                <button class="nav-btn" data-target="rust">🦀 Rust Core Concepts</button>
+                <button class="nav-btn" data-target="hex">⬡ Hexagonal Math</button>
+                <button class="nav-btn" data-target="network">🔌 OSPF Network Sim</button>
+            </nav>
+            <div class="sidebar-footer">
+                <p>Built with Rust & Bevy</p>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="content-area">
+            <!-- Introduction Section -->
+            <section id="intro" class="doc-section active">
+                <h2>Introduction</h2>
+                <p class="subtitle">Undersea Network Strategy Game Architecture</p>
+                <p>Welcome to the developer documentation for <strong>PacketCommand</strong>, an undersea real-time network simulation game. The player builds nodes, lays cables, and competes for central Data Centers in a vibrant coral reef setting.</p>
+                
+                <div class="card">
+                    <h3>💡 Game Concept & Goal</h3>
+                    <p>The core mechanic mimics <strong>real-world networking protocols</strong> mapped onto a 3D hexagonal board. The simulation runs in real-time, executing OSPF-like routing, packet buffer congestion, worm payloads, and stateful firewall rule filtering on every tick.</p>
+                </div>
+            </section>
+
+            <!-- Bevy ECS Section -->
+            <section id="ecs" class="doc-section">
+                <h2>Bevy ECS Architecture</h2>
+                <p class="subtitle">Entity-Component-System decoupling</p>
+                <p>Bevy is a modern, data-driven game engine written in Rust. Game logic is split using the <strong>ECS paradigm</strong>:</p>
+                
+                <div class="grid-2">
+                    <div class="card">
+                        <h4>🧩 Entities & Components</h4>
+                        <p>Entities are simple ID handles representing nodes, links, and packets. Components are plain Rust structures containing data (e.g. <code>NetworkNode</code>, <code>NetworkLink</code>, <code>Packet</code>) attached to these IDs.</p>
+                    </div>
+                    <div class="card">
+                        <h4>⚙️ Systems</h4>
+                        <p>Systems are standard Rust functions that run every frame. They query for specific components and mutate state (e.g., <code>move_packets</code>, <code>update_routing_tables</code>, <code>camera_controls</code>).</p>
+                    </div>
+                </div>
+
+                <div class="card code-card">
+                    <h3>System Query Example</h3>
+                    <pre><code class="language-rust">// System that moves packets along their associated links
+fn move_packets(
+    mut commands: Commands,
+    links: Query<&NetworkLink>,
+    mut packets: Query<(Entity, &mut Packet)>,
+) {
+    for (packet_entity, mut packet) in packets.iter_mut() {
+        if let Ok(link) = links.get(packet.link) {
+            packet.progress += link.link_type.speed() * 0.01;
+            // ...
+        }
+    }
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- Rust Core Concepts Section -->
+            <section id="rust" class="doc-section">
+                <h2>Rust Core Concepts</h2>
+                <p class="subtitle">Safety, Concurrency, and Aliasing Rules</p>
+                <p>Rust guarantees thread safety and memory safety at compile-time. Here are the core concepts used in PacketCommand:</p>
+
+                <div class="card">
+                    <h3>⚖️ Ownership & Borrowing (System Conflict B0002)</h3>
+                    <p>Rust enforces strict borrowing rules: you can have <strong>many shared references</strong> (<code>&T</code>) OR <strong>exactly one mutable reference</strong> (<code>&mut T</code>) to a resource, but never both at the same time.</p>
+                    <p><strong>Bevy Runtime Panic B0002</strong> occurred when our system parameters declared both <code>Res&lt;GameResources&gt;</code> and <code>ResMut&lt;GameResources&gt;</code>. Because Bevy runs systems in parallel, this violated Rust's aliasing rules at runtime. The fix consolidated all reads and writes into a single mutable <code>ResMut&lt;GameResources&gt;</code> access parameter.</p>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <h4>🔍 Pattern Matching</h4>
+                        <p>Used to handle packet types, link types, and owner checks safely and exhaustively. Evaluated at compile-time to guarantee no unhandled conditions.</p>
+                    </div>
+                    <div class="card">
+                        <h4>📦 Local State Variables</h4>
+                        <p>Egui locals (e.g., <code>Local&lt;u32&gt;</code>) are used to persist state (like IP sequence allocations and packet IDs) between frames without leaking variables globally.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Hexagonal Math Section -->
+            <section id="hex" class="doc-section">
+                <h2>Hexagonal Grid Mathematics</h2>
+                <p class="subtitle">Pointy-Topped Axial Coordinates & World Projections</p>
+                <p>The Catan-style board uses a <strong>Pointy-Topped Hexagonal Grid</strong> with radius 3 (19 hexes total). We map coordinate centers using axial coordinates <code>(q, r)</code>.</p>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <h4>⬡ Hex to 3D World Project</h4>
+                        <p>For a hex radius <code>R</code>, the 3D position <code>(x, z)</code> of coordinate <code>(q, r)</code> is computed as:</p>
+                        <p><code>x = R * (sqrt(3) * q + sqrt(3)/2 * r)</code></p>
+                        <p><code>z = R * (3/2 * r)</code></p>
+                    </div>
+                    <div class="card">
+                        <h4>🖱️ 3D Ray-to-Hex Picking</h4>
+                        <p>Clicking translates screen space to a 3D ray. We intersect it with the <code>y = 0</code> plane, convert <code>(x, z)</code> back to fractional hex coordinates, and round it to the nearest hex coordinate using distance comparison.</p>
+                    </div>
+                </div>
+
+                <div class="card code-card">
+                    <h3>Hex Coordinates Rounding Algorithm</h3>
+                    <pre><code class="language-rust">// Rounding fractional coordinates (q, r) to the nearest integer HexCoord
+fn round(q: f32, r: f32) -> HexCoord {
+    let s = -q - r;
+    let mut rq = q.round();
+    let mut rr = r.round();
+    let rs = s.round();
+
+    let dq = (rq - q).abs();
+    let dr = (rr - r).abs();
+    let ds = (rs - s).abs();
+
+    if dq > dr && dq > ds {
+        rq = -rr - rs;
+    } else if dr > ds {
+        rr = -rq - rs;
+    }
+
+    HexCoord { q: rq as i32, r: rr as i32 }
+}</code></pre>
+                </div>
+            </section>
+
+            <!-- Network & OSPF Simulation Section -->
+            <section id="network" class="doc-section">
+                <h2>OSPF Network & Routing Simulation</h2>
+                <p class="subtitle">Shortest-Path Forwarding and Queue Management</p>
+                
+                <div class="card">
+                    <h3>🗺️ Shortest-Path OSPF Routing (Dijkstra)</h3>
+                    <p>PacketCommand runs a dynamic shortest-path routing algorithm modeled after real-world <strong>OSPF (Open Shortest Path First)</strong>. Whenever links are laid or destroyed, the pathfinder executes a Dijkstra algorithm, updating every node's routing table dynamically.</p>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <h4>📥 Queue Buffers & Congestion</h4>
+                        <p>Nodes have limited buffer capacities (e.g. 15 packets). If packets arrive faster than the node's CPU can process them, the queue congests. Overflowing packets are discarded, simulating packet drop rates.</p>
+                    </div>
+                    <div class="card">
+                        <h4>🦠 Malware Infection & Capture</h4>
+                        <p>Worm packets traveling along connections decrement a target node's health. When health drops to 0, ownership shifts (e.g. Neutral to Player/AI), capturing the hex and redirecting routing tables.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -44,3 +44,35 @@ cargo run
 
 ### Dev Optimizations
 To keep incremental compilation times under 3 seconds, the project is configured to use Bevy's `dynamic_linking` feature and high dependency optimization overrides in `Cargo.toml`.
+
+---
+
+## 📚 Developer Documentation
+
+We provide a beautiful, custom developer documentation website inside the `/docs` folder that explains the Rust architecture, Bevy ECS systems, borrowing panic solutions, and hexagonal math.
+
+### Spin Up Documentation Locally
+You can spin up the documentation site locally using any simple HTTP server:
+
+**Using Python:**
+```bash
+python3 -m http.server --directory docs 8080
+```
+Then open [http://localhost:8080](http://localhost:8080) in your browser.
+
+**Using Node.js:**
+```bash
+npx -y serve docs
+```
+
+**Alternative:**
+Simply double-click the [docs/index.html](file:///Users/joe/Documents/projects/strategy-game/docs/index.html) file to open it directly in any web browser.
+
+### Deploy to GitHub Pages
+To publish the documentation site to GitHub Pages:
+1. Go to your repository settings on GitHub.
+2. Select **Pages** in the left sidebar.
+3. Under **Build and deployment -> Source**, select **Deploy from a branch**.
+4. Set the branch to `main` and choose the `/docs` folder.
+5. Click **Save**. GitHub will automatically publish the documentation site.
+
