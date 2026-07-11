@@ -389,6 +389,17 @@ fn round(q: f32, r: f32) -> HexCoord {
         </div>
       </section>
     {/if}
+
+    <footer class="mobile-footer">
+      <a href="https://github.com/J-Rebs/strategy-game" target="_blank" rel="noopener noreferrer" class="repo-link">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" class="github-icon">
+          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+        </svg>
+        GitHub Repository
+      </a>
+      <p>Docs built with Svelte • Game built with Rust</p>
+      <p class="coordinator">Orchestrated with Antigravity</p>
+    </footer>
   </main>
 </div>
 
@@ -699,6 +710,10 @@ fn round(q: f32, r: f32) -> HexCoord {
     margin-top: 4rem;
   }
 
+  .mobile-footer {
+    display: none;
+  }
+
   @media (max-width: 950px) {
     .container {
       grid-template-columns: 1fr;
@@ -709,6 +724,10 @@ fn round(q: f32, r: f32) -> HexCoord {
       padding: 1.5rem;
       border-right: none;
       border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar .sidebar-footer {
+      display: none;
     }
 
     .logo-area {
@@ -739,6 +758,73 @@ fn round(q: f32, r: f32) -> HexCoord {
 
     .grid-2 {
       grid-template-columns: 1fr;
+    }
+
+    .mobile-footer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border-color);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-align: center;
+    }
+
+    .mobile-footer .repo-link {
+      color: var(--text-primary);
+      text-decoration: none;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      transition: color 0.2s;
+    }
+
+    .mobile-footer .repo-link:hover {
+      color: var(--aqua);
+    }
+
+    .mobile-footer .coordinator {
+      font-weight: 600;
+      color: var(--aqua);
+      margin-top: 0.1rem;
+    }
+  }
+
+  @media (max-width: 650px) {
+    .content-area {
+      padding: 2rem 1.25rem;
+    }
+
+    h2 {
+      font-size: 1.75rem;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .card {
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .card-header h3 {
+      font-size: 1.15rem;
+    }
+
+    pre {
+      padding: 1rem;
+    }
+
+    code {
+      font-size: 0.8rem;
     }
   }
 </style>
