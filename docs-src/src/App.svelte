@@ -424,8 +424,8 @@ fn round(q: f32, r: f32) -> HexCoord {
     line-height: 1.6;
     margin: 0;
     padding: 0;
-    height: 100vh;
-    overflow: hidden;
+    min-height: 100vh;
+    -webkit-overflow-scrolling: touch;
   }
 
   .glow-backdrop {
