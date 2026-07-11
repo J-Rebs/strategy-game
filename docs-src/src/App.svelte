@@ -165,7 +165,7 @@ fn round(q: f32, r: f32) -> HexCoord {
             </svg>
             <h3>Project Philosophy and Goals</h3>
           </div>
-          <p>The primary purpose of PacketCommand is to help contributors learn how to effectively write code and learn in collaboration with AI. The overarching goal is to help engineers learn how to move quicker while constantly improving their own core understanding. We take as our guide the continuous, iterative improvement of the engineer, the engineer's use of AI tools, and the game itself.</p>
+          <p>The primary purpose of PacketCommand is to help contributors learn how to effectively write code and learn in collaboration with AI. The overarching goal is to help engineers learn how to move quicker while constantly improving their own core understanding. We take as our guide the continuous, iterative improvement of the engineer, the engineer's use of AI tools, and the game itself. New contributors and feedback are highly welcome!</p>
         </div>
         
         <div class="card">
