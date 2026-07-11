@@ -129,7 +129,7 @@ fn round(q: f32, r: f32) -> HexCoord {
     <div class="sidebar-footer">
       <p>Docs built with Svelte</p>
       <p>Game built with Rust</p>
-      <p class="coordinator">Coordinated with Antigravity</p>
+      <p class="coordinator">Orchestrated with Antigravity</p>
     </div>
   </aside>
 
