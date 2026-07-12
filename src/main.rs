@@ -5,7 +5,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "PacketCommand - Undersea Ocean Reef".to_string(),
+                title: "PacketCommand - Cyber Grid Network Dominance".to_string(),
                 resolution: (1200.0_f32, 800.0_f32).into(),
                 ..default()
             }),

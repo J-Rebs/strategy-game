@@ -156,10 +156,10 @@ fn round(q: f32, r: f32) -> HexCoord {
             </svg>
             <h3>Active Alpha Stage</h3>
           </div>
-          <p>The basic game compiles and runs, but mechanics are still under development. This developer documentation is currently AI-generated and requires review.</p>
+          <p>The basic game compiles and runs, but mechanics are still under development. This developer documentation is currently updated to the Cyber Grid 4-Player Battle stage.</p>
         </div>
 
-        <p class="paragraph">Welcome to the developer documentation hub for PacketCommand, an undersea real-time network strategy simulation game. The player builds nodes, lays cables, and competes for central Data Centers in a vibrant, bioluminescent coral reef setting.</p>
+        <p class="paragraph">Welcome to the developer documentation hub for PacketCommand, a real-time cyber network strategy simulation game. Players lay cables, configure routers, and compete for neutral Cities on a pointy-topped 3D cyber grid, battling for complete territorial dominance against three rival AI networks.</p>
         
         <div class="card">
           <div class="card-header">
@@ -185,7 +185,7 @@ fn round(q: f32, r: f32) -> HexCoord {
             </svg>
             <h3>Game Concept and Goal</h3>
           </div>
-          <p>The core gameplay maps real-world computer networking concepts onto a pointy-topped 3D hexagonal map. Players configure routers, upgrade queue processing speed, set up firewalls, and deploy worm payloads to capture adjacent nodes in real-time, working towards network dominance.</p>
+          <p>The core gameplay maps real-world computer networking concepts onto a pointy-topped 3D hexagonal map. Players configure routers, connect cables, upgrade nodes to Data Centers, and attempt to buy out target Main Data Centers. Map territory coloring and city light colors morph dynamically to show which team dominates the hex space.</p>
         </div>
 
         <!-- Custom SVG Wave drawing at bottom of intro -->

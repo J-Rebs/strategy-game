@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::math::primitives::Cuboid;
-use crate::simulation::{NetworkNode, NetworkLink, Packet, Owner, NodeType, LinkType, CityDominance, CitySize};
-use crate::hex::{HexCoord, create_hex_prism_mesh, HexTile, HexTileType};
+use crate::simulation::{NetworkNode, NetworkLink, Packet, Owner, NodeType, CityDominance, CitySize};
+use crate::hex::{HexCoord, create_hex_prism_mesh, HexTile};
 
 // --- Marker Components ---
 #[derive(Component)]
@@ -57,23 +57,39 @@ impl Default for CameraState {
 #[derive(Resource)]
 #[allow(dead_code)]
 pub struct GameMaterials {
-    pub grass_hex_mat: Handle<StandardMaterial>, // Golden sand
-    pub water_hex_mat: Handle<StandardMaterial>, // Deep trench blue
-    pub mountain_hex_mat: Handle<StandardMaterial>, // Coral pink
-    pub dc_hex_mat: Handle<StandardMaterial>, // Bioluminescent cyan
+    pub grass_hex_mat: Handle<StandardMaterial>, // Cyber Grid base
+    pub water_hex_mat: Handle<StandardMaterial>,
+    pub mountain_hex_mat: Handle<StandardMaterial>,
+    pub dc_hex_mat: Handle<StandardMaterial>,
 
+    // Player/AI Node bases
     pub player_node_mat: Handle<StandardMaterial>,
-    pub ai_node_mat: Handle<StandardMaterial>,
+    pub ai1_node_mat: Handle<StandardMaterial>,
+    pub ai2_node_mat: Handle<StandardMaterial>,
+    pub ai3_node_mat: Handle<StandardMaterial>,
     pub neutral_node_mat: Handle<StandardMaterial>,
-    pub player_node_glow_mat: Handle<StandardMaterial>,
 
+    // Glow overlays
+    pub player_node_glow_mat: Handle<StandardMaterial>,
+    pub ai1_node_glow_mat: Handle<StandardMaterial>,
+    pub ai2_node_glow_mat: Handle<StandardMaterial>,
+    pub ai3_node_glow_mat: Handle<StandardMaterial>,
+    pub neutral_node_glow_mat: Handle<StandardMaterial>,
+
+    // Links
     pub player_link_mat: Handle<StandardMaterial>,
-    pub ai_link_mat: Handle<StandardMaterial>,
+    pub ai1_link_mat: Handle<StandardMaterial>,
+    pub ai2_link_mat: Handle<StandardMaterial>,
+    pub ai3_link_mat: Handle<StandardMaterial>,
     pub neutral_link_mat: Handle<StandardMaterial>,
 
+    // Packets
     pub player_packet_mat: Handle<StandardMaterial>,
-    pub ai_packet_mat: Handle<StandardMaterial>,
+    pub ai1_packet_mat: Handle<StandardMaterial>,
+    pub ai2_packet_mat: Handle<StandardMaterial>,
+    pub ai3_packet_mat: Handle<StandardMaterial>,
 
+    // Highlights
     pub hover_highlight_mat: Handle<StandardMaterial>,
     pub selected_highlight_mat: Handle<StandardMaterial>,
 }
@@ -83,8 +99,8 @@ pub struct RenderingPlugin;
 impl Plugin for RenderingPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(CameraState::default())
-            // ClearColor: Vibrant underwater sea teal-cyan
-            .insert_resource(ClearColor(Color::srgba(0.04, 0.28, 0.38, 1.0)))
+            // ClearColor: Dark Cyber Space Black
+            .insert_resource(ClearColor(Color::srgba(0.01, 0.02, 0.04, 1.0)))
             .add_systems(Startup, (setup_camera_and_lights, setup_materials).chain())
             .add_systems(Update, (
                 camera_controls,
@@ -106,24 +122,24 @@ fn setup_camera_and_lights(mut commands: Commands) {
     // Spawn 3D camera
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_xyz(8.0, 10.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(10.0, 12.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
         MainCamera,
     ));
 
-    // Deep cyan underwater ambient light
+    // Dark cyber-space ambient light
     commands.insert_resource(AmbientLight {
-        color: Color::srgba(0.1, 0.5, 0.6, 1.0),
-        brightness: 350.0,
+        color: Color::srgba(0.05, 0.08, 0.15, 1.0),
+        brightness: 200.0,
     });
 
-    // Intense golden sunbeams filtering down
+    // Directional cyber sunbeams
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             shadows_enabled: true,
-            illuminance: 6500.0,
-            color: Color::srgba(1.0, 0.95, 0.85, 1.0),
+            illuminance: 3500.0,
+            color: Color::srgba(0.7, 0.85, 1.0, 1.0),
             ..default()
         },
         transform: Transform::from_xyz(10.0, 20.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -137,82 +153,138 @@ fn setup_materials(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    // Tile Bases: Sleek Cyber Metal/Grid base
     let grass_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.88, 0.76, 0.52, 1.0), // Golden sea sand
+        base_color: Color::srgba(0.08, 0.1, 0.15, 1.0), // Dark obsidian blue
         perceptual_roughness: 0.9,
         ..default()
     });
     let water_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.06, 0.18, 0.28, 1.0), // Deep blue ocean trench
-        perceptual_roughness: 0.3,
+        base_color: Color::srgba(0.03, 0.05, 0.08, 1.0), // Even darker blue
+        perceptual_roughness: 0.4,
         ..default()
     });
     let mountain_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.95, 0.42, 0.55, 1.0), // Bright neon pink coral reef
+        base_color: Color::srgba(0.12, 0.15, 0.22, 1.0), // Elevated plateaus
         perceptual_roughness: 0.8,
         ..default()
     });
     let dc_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 0.85, 0.9, 1.0), // Intense bioluminescent cyan reef
+        base_color: Color::srgba(0.05, 0.2, 0.3, 1.0),
         perceptual_roughness: 0.5,
         ..default()
     });
 
+    // Player and AI Node Bases (Neon Cyber Spire Bases)
     let player_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 0.45, 0.55, 1.0), // Teal coral base
+        base_color: Color::srgba(0.0, 0.3, 0.4, 1.0),
         perceptual_roughness: 0.5,
         ..default()
     });
-    let ai_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.5, 0.1, 0.3, 1.0), // Dark magenta coral base
+    let ai1_node_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.4, 0.05, 0.1, 1.0),
+        perceptual_roughness: 0.5,
+        ..default()
+    });
+    let ai2_node_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.05, 0.4, 0.05, 1.0),
+        perceptual_roughness: 0.5,
+        ..default()
+    });
+    let ai3_node_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.35, 0.05, 0.35, 1.0),
         perceptual_roughness: 0.5,
         ..default()
     });
     let neutral_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.35, 0.4, 0.42, 1.0), // Slate grey rock
-        perceptual_roughness: 0.8,
-        ..default()
-    });
-    let player_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 1.0, 0.9, 1.0),
-        emissive: Color::srgba(0.0, 1.0, 0.9, 1.0).into(),
+        base_color: Color::srgba(0.2, 0.22, 0.25, 1.0), // Neutral slate metal
+        perceptual_roughness: 0.7,
         ..default()
     });
 
-    let player_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 0.9, 1.0, 0.6),
-        emissive: Color::srgba(0.0, 0.7, 1.0, 1.0).into(),
+    // Neon Glow overlays
+    let player_node_glow_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.0, 0.9, 1.0, 1.0),
+        emissive: Color::srgba(0.0, 0.9, 1.0, 1.0).into(),
         ..default()
     });
-    let ai_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.25, 0.6, 0.6),
-        emissive: Color::srgba(1.0, 0.15, 0.5, 1.0).into(),
+    let ai1_node_glow_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(1.0, 0.1, 0.3, 1.0),
+        emissive: Color::srgba(1.0, 0.1, 0.3, 1.0).into(),
+        ..default()
+    });
+    let ai2_node_glow_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.2, 1.0, 0.2, 1.0),
+        emissive: Color::srgba(0.2, 1.0, 0.2, 1.0).into(),
+        ..default()
+    });
+    let ai3_node_glow_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.9, 0.2, 0.9, 1.0),
+        emissive: Color::srgba(0.9, 0.2, 0.9, 1.0).into(),
+        ..default()
+    });
+    let neutral_node_glow_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.5, 0.55, 0.6, 1.0),
+        emissive: Color::srgba(0.2, 0.22, 0.25, 1.0).into(),
+        ..default()
+    });
+
+    // Links (Glowing circuits)
+    let player_link_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.0, 0.8, 1.0, 0.6),
+        emissive: Color::srgba(0.0, 0.6, 0.8, 1.0).into(),
+        ..default()
+    });
+    let ai1_link_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(1.0, 0.1, 0.3, 0.6),
+        emissive: Color::srgba(0.8, 0.05, 0.2, 1.0).into(),
+        ..default()
+    });
+    let ai2_link_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.2, 1.0, 0.2, 0.6),
+        emissive: Color::srgba(0.1, 0.8, 0.1, 1.0).into(),
+        ..default()
+    });
+    let ai3_link_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.9, 0.2, 0.9, 0.6),
+        emissive: Color::srgba(0.7, 0.1, 0.7, 1.0).into(),
         ..default()
     });
     let neutral_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.2, 0.35, 0.4, 0.3),
+        base_color: Color::srgba(0.2, 0.25, 0.3, 0.3),
         ..default()
     });
 
+    // Packets
     let player_packet_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.4, 0.95, 1.0, 1.0), // Glowing cyan water bubble
-        emissive: Color::srgba(0.4, 0.95, 1.0, 1.0).into(),
+        base_color: Color::srgba(0.0, 1.0, 1.0, 1.0),
+        emissive: Color::srgba(0.0, 1.0, 1.0, 1.0).into(),
         ..default()
     });
-    let ai_packet_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.4, 0.7, 1.0), // Glowing pink algae bubble
-        emissive: Color::srgba(1.0, 0.4, 0.7, 1.0).into(),
+    let ai1_packet_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(1.0, 0.1, 0.3, 1.0),
+        emissive: Color::srgba(1.0, 0.1, 0.3, 1.0).into(),
+        ..default()
+    });
+    let ai2_packet_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.2, 1.0, 0.2, 1.0),
+        emissive: Color::srgba(0.2, 1.0, 0.2, 1.0).into(),
+        ..default()
+    });
+    let ai3_packet_mat = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.9, 0.2, 0.9, 1.0),
+        emissive: Color::srgba(0.9, 0.2, 0.9, 1.0).into(),
         ..default()
     });
 
     let hover_highlight_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.95, 0.2, 0.3), // Soft glowing yellow highlight ring
-        emissive: Color::srgba(1.0, 0.95, 0.2, 1.0).into(),
+        base_color: Color::srgba(1.0, 0.9, 0.0, 0.4), // Glowing yellow highlight ring
+        emissive: Color::srgba(1.0, 0.9, 0.0, 1.0).into(),
         ..default()
     });
     let selected_highlight_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 1.0, 0.4, 0.4), // Soft glowing neon emerald ring
-        emissive: Color::srgba(0.0, 1.0, 0.4, 1.0).into(),
+        base_color: Color::srgba(0.0, 1.0, 0.5, 0.5), // Glowing cyan-green emerald ring
+        emissive: Color::srgba(0.0, 1.0, 0.5, 1.0).into(),
         ..default()
     });
 
@@ -222,14 +294,24 @@ fn setup_materials(
         mountain_hex_mat,
         dc_hex_mat,
         player_node_mat,
-        ai_node_mat,
+        ai1_node_mat,
+        ai2_node_mat,
+        ai3_node_mat,
         neutral_node_mat,
         player_node_glow_mat,
+        ai1_node_glow_mat,
+        ai2_node_glow_mat,
+        ai3_node_glow_mat,
+        neutral_node_glow_mat,
         player_link_mat,
-        ai_link_mat,
+        ai1_link_mat,
+        ai2_link_mat,
+        ai3_link_mat,
         neutral_link_mat,
         player_packet_mat,
-        ai_packet_mat,
+        ai1_packet_mat,
+        ai2_packet_mat,
+        ai3_packet_mat,
         hover_highlight_mat: hover_highlight_mat.clone(),
         selected_highlight_mat: selected_highlight_mat.clone(),
     };
@@ -346,44 +428,75 @@ fn camera_controls(
 // --- Sync Hex Tiles ---
 fn sync_hex_tiles(
     mut commands: Commands,
-    tiles: Query<(Entity, &HexTile), Changed<HexTile>>,
-    mesh_query: Query<(Entity, &HexTileMeshMarker)>,
+    tiles: Query<&HexTile>,
+    nodes: Query<&NetworkNode>,
+    cities: Query<(&NetworkNode, &CityDominance)>,
+    mut mesh_query: Query<(Entity, &mut Handle<StandardMaterial>, &HexTileMeshMarker)>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
 ) {
-    for (_tile_entity, tile) in tiles.iter() {
-        for (mesh_entity, marker) in mesh_query.iter() {
-            if marker.coord == tile.coord {
-                commands.entity(mesh_entity).despawn_recursive();
+    // 1. Spawn missing tile meshes on startup
+    for tile in tiles.iter() {
+        let exists = mesh_query.iter().any(|(_, _, marker)| marker.coord == tile.coord);
+        if !exists {
+            let pos = tile.coord.to_world(1.0);
+            let hex_mesh = create_hex_prism_mesh(0.96, 0.35); // thin tiles
+            commands.spawn((
+                PbrBundle {
+                    mesh: meshes.add(hex_mesh),
+                    material: materials.grass_hex_mat.clone(),
+                    transform: Transform::from_translation(pos - Vec3::new(0.0, 0.175, 0.0)),
+                    ..default()
+                },
+                HexTileMeshMarker { coord: tile.coord },
+            ));
+        }
+    }
+
+    // 2. Dynamically update tile colors based on occupying nodes / dominance
+    for (_, mut mat_handle, marker) in mesh_query.iter_mut() {
+        let coord = marker.coord;
+        let mut tile_owner = Owner::Neutral;
+        
+        for node in nodes.iter() {
+            if node.coord == coord {
+                if node.node_type == NodeType::City {
+                    if let Some((_, dom)) = cities.iter().find(|(n, _)| n.coord == coord) {
+                        if dom.player_control_pct > 0.5 {
+                            tile_owner = Owner::Player;
+                        } else if dom.ai1_control_pct > 0.5 {
+                            tile_owner = Owner::AI1;
+                        } else if dom.ai2_control_pct > 0.5 {
+                            tile_owner = Owner::AI2;
+                        } else if dom.ai3_control_pct > 0.5 {
+                            tile_owner = Owner::AI3;
+                        }
+                    }
+                } else {
+                    tile_owner = node.owner;
+                }
+                break;
             }
         }
 
-        let pos = tile.coord.to_world(1.0);
-        let mat = match tile.tile_type {
-            HexTileType::Grass => materials.grass_hex_mat.clone(),
-            HexTileType::Water => materials.water_hex_mat.clone(),
-            HexTileType::Mountain => materials.mountain_hex_mat.clone(),
-            HexTileType::DataCenterCenter => materials.dc_hex_mat.clone(),
+        let new_mat = match tile_owner {
+            Owner::Player => materials.player_link_mat.clone(),
+            Owner::AI1 => materials.ai1_link_mat.clone(),
+            Owner::AI2 => materials.ai2_link_mat.clone(),
+            Owner::AI3 => materials.ai3_link_mat.clone(),
+            Owner::Neutral => materials.grass_hex_mat.clone(),
         };
 
-        let hex_mesh = create_hex_prism_mesh(0.96, 0.35); // thin tiles
-
-        commands.spawn((
-            PbrBundle {
-                mesh: meshes.add(hex_mesh),
-                material: mat,
-                transform: Transform::from_translation(pos - Vec3::new(0.0, 0.175, 0.0)),
-                ..default()
-            },
-            HexTileMeshMarker { coord: tile.coord },
-        ));
+        if *mat_handle != new_mat {
+            *mat_handle = new_mat;
+        }
     }
 }
 
 // --- Sync Node Visuals (Bioluminescent Coral structures) ---
 fn sync_node_visuals(
     mut commands: Commands,
-    nodes: Query<(Entity, &NetworkNode, &Transform, Option<&CityDominance>), Changed<NetworkNode>>,
+    nodes: Query<(Entity, &NetworkNode, &Transform, Option<&CityDominance>), Or<(Changed<NetworkNode>, Changed<CityDominance>)>>,
     mesh_query: Query<(Entity, &NodeMeshMarker)>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
@@ -397,15 +510,34 @@ fn sync_node_visuals(
 
         let base_mat = match node.owner {
             Owner::Player => materials.player_node_mat.clone(),
-            Owner::AI => materials.ai_node_mat.clone(),
+            Owner::AI1 => materials.ai1_node_mat.clone(),
+            Owner::AI2 => materials.ai2_node_mat.clone(),
+            Owner::AI3 => materials.ai3_node_mat.clone(),
             Owner::Neutral => materials.neutral_node_mat.clone(),
         };
 
-        let glow_mat = if node.owner == Owner::Player {
-            materials.player_node_glow_mat.clone()
+        let mut glow_mat = materials.neutral_node_glow_mat.clone();
+        if node.node_type == NodeType::City {
+            if let Some(dom) = city_dom {
+                if dom.player_control_pct > 0.5 {
+                    glow_mat = materials.player_node_glow_mat.clone();
+                } else if dom.ai1_control_pct > 0.5 {
+                    glow_mat = materials.ai1_node_glow_mat.clone();
+                } else if dom.ai2_control_pct > 0.5 {
+                    glow_mat = materials.ai2_node_glow_mat.clone();
+                } else if dom.ai3_control_pct > 0.5 {
+                    glow_mat = materials.ai3_node_glow_mat.clone();
+                }
+            }
         } else {
-            materials.ai_packet_mat.clone()
-        };
+            glow_mat = match node.owner {
+                Owner::Player => materials.player_node_glow_mat.clone(),
+                Owner::AI1 => materials.ai1_node_glow_mat.clone(),
+                Owner::AI2 => materials.ai2_node_glow_mat.clone(),
+                Owner::AI3 => materials.ai3_node_glow_mat.clone(),
+                Owner::Neutral => materials.neutral_node_glow_mat.clone(),
+            };
+        }
 
         let scale = if let Some(dom) = city_dom {
             match dom.size {
@@ -462,7 +594,7 @@ fn sync_node_visuals(
                     });
                 }
                 NodeType::City => {
-                    // Futuristic undersea tower cluster: central cuboid spire with outer spires
+                    // Futuristic tower cluster
                     parent.spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(Cuboid::new(0.4, 1.4, 0.4))),
                         material: base_mat.clone(),
@@ -492,6 +624,7 @@ fn sync_link_visuals(
     mut commands: Commands,
     links: Query<(Entity, &NetworkLink), Changed<NetworkLink>>,
     nodes: Query<&Transform, With<NetworkNode>>,
+    nodes_query: Query<&NetworkNode>,
     mesh_query: Query<(Entity, &LinkMeshMarker)>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
@@ -512,10 +645,24 @@ fn sync_link_visuals(
             let direction = (pos_b - pos_a).normalize();
             let rotation = Quat::from_rotation_arc(Vec3::X, direction);
 
-            let mat = match link.link_type {
-                LinkType::Fiber => materials.player_link_mat.clone(),
-                LinkType::Wireless => materials.ai_link_mat.clone(),
-                LinkType::Copper => materials.neutral_link_mat.clone(),
+            let mut link_owner = Owner::Neutral;
+            if let Ok(node_a_comp) = nodes_query.get(link.node_a) {
+                if node_a_comp.owner != Owner::Neutral {
+                    link_owner = node_a_comp.owner;
+                }
+            }
+            if link_owner == Owner::Neutral {
+                if let Ok(node_b_comp) = nodes_query.get(link.node_b) {
+                    link_owner = node_b_comp.owner;
+                }
+            }
+
+            let mat = match link_owner {
+                Owner::Player => materials.player_link_mat.clone(),
+                Owner::AI1 => materials.ai1_link_mat.clone(),
+                Owner::AI2 => materials.ai2_link_mat.clone(),
+                Owner::AI3 => materials.ai3_link_mat.clone(),
+                Owner::Neutral => materials.neutral_link_mat.clone(),
             };
 
             commands.spawn((
@@ -532,7 +679,7 @@ fn sync_link_visuals(
     }
 }
 
-// --- Sync Packet Visuals with bubble bobbing ---
+// --- Sync Packet Visuals ---
 fn sync_packet_visuals(
     mut commands: Commands,
     packets: Query<(Entity, &Packet)>,
@@ -544,9 +691,8 @@ fn sync_packet_visuals(
 ) {
     let mut updated_entities = bevy::utils::HashSet::default();
     let time_sec = time.elapsed_seconds();
-    let bobbing = (time_sec * 5.0).sin() * 0.06; // smooth sea wave floating bobbing effect
-    
-    // 1. Move and bob existing packets
+    let bobbing = (time_sec * 5.0).sin() * 0.06;
+
     for (mesh_entity, mut mesh_transform, marker) in mesh_query.iter_mut() {
         if let Ok((_, packet)) = packets.get(marker.packet_entity) {
             if let (Ok(trans_a), Ok(trans_b)) = (nodes.get(packet.from_node), nodes.get(packet.to_node)) {
@@ -562,7 +708,6 @@ fn sync_packet_visuals(
         }
     }
 
-    // 2. Spawn new bobbing packets
     for (packet_entity, packet) in packets.iter() {
         if updated_entities.contains(&packet_entity) {
             continue;
@@ -573,10 +718,14 @@ fn sync_packet_visuals(
             let pos_b = trans_b.translation;
             let current_pos = pos_a.lerp(pos_b, packet.progress);
 
-            let mat = if packet.src_ip < 256 {
+            let mat = if packet.src_ip < 100 {
                 materials.player_packet_mat.clone()
+            } else if packet.src_ip < 200 {
+                materials.ai1_packet_mat.clone()
+            } else if packet.src_ip < 300 {
+                materials.ai2_packet_mat.clone()
             } else {
-                materials.ai_packet_mat.clone()
+                materials.ai3_packet_mat.clone()
             };
 
             commands.spawn((

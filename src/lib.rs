@@ -16,24 +16,20 @@ pub use ai::AiPlugin;
 pub use hud::{HudPlugin, PlayerControls, SelectedTool};
 
 pub fn setup_initial_map(mut commands: Commands) {
-    // 1. Generate 19 Hexagonal Tiles in a radius-3 board
-    // Pointy-topped coordinates satisfying |q| <= 2, |r| <= 2, |q+r| <= 2
-    for q in -2..=2 {
-        for r in -2..=2 {
-            let sum_qr: i32 = q + r;
-            if sum_qr.abs() <= 2 {
+    // 1. Generate 37 Hexagonal Tiles in a radius-4 board
+    for q in -3..=3 {
+        for r in -3..=3 {
+            let sum: i32 = q + r;
+            if sum.abs() <= 3 {
                 let coord = HexCoord::new(q, r);
                 
-                // Determine tile type to make a pretty layout (like Catan)
-                let diff_qr: i32 = q - r;
+                // Determine tile type to make a pretty layout
                 let tile_type = if q == 0 && r == 0 {
                     HexTileType::DataCenterCenter // center hub
-                } else if q.abs() == 2 && r.abs() == 2 {
-                    HexTileType::Water // water corners
-                } else if diff_qr.abs() == 1 {
-                    HexTileType::Mountain // mountain ridges
+                } else if q.abs() == 3 || r.abs() == 3 {
+                    HexTileType::Water // outer boundary
                 } else {
-                    HexTileType::Grass // normal grass
+                    HexTileType::Grass
                 };
 
                 commands.spawn(HexTile { coord, tile_type });
@@ -41,8 +37,8 @@ pub fn setup_initial_map(mut commands: Commands) {
         }
     }
 
-    // 2. Spawn Player Subnet (West side)
-    let p_dc_coord = HexCoord::new(-2, 0);
+    // 2. Spawn Player Subnet (West side: Teal)
+    let p_dc_coord = HexCoord::new(-3, 0);
     let player_dc = commands.spawn((
         NetworkNode {
             ip: 10,
@@ -54,7 +50,7 @@ pub fn setup_initial_map(mut commands: Commands) {
         Transform::from_translation(p_dc_coord.to_world(1.0)),
     )).id();
 
-    let p_router_coord = HexCoord::new(-1, 0);
+    let p_router_coord = HexCoord::new(-2, 0);
     let player_router = commands.spawn((
         NetworkNode {
             ip: 20,
@@ -73,90 +69,125 @@ pub fn setup_initial_map(mut commands: Commands) {
         is_active: true,
     });
 
-    // 3. Spawn AI Subnet (East side)
-    let ai_dc_coord = HexCoord::new(2, 0);
-    let ai_dc = commands.spawn((
+    // 3. Spawn AI1 Subnet (East side: Crimson Red)
+    let ai1_dc_coord = HexCoord::new(3, -3);
+    let ai1_dc = commands.spawn((
         NetworkNode {
-            ip: 200,
-            coord: ai_dc_coord,
+            ip: 100,
+            coord: ai1_dc_coord,
             node_type: NodeType::DataCenter,
-            owner: Owner::AI,
+            owner: Owner::AI1,
         },
         RoutingTable::default(),
-        Transform::from_translation(ai_dc_coord.to_world(1.0)),
+        Transform::from_translation(ai1_dc_coord.to_world(1.0)),
     )).id();
 
-    let ai_router_coord = HexCoord::new(1, 0);
-    let ai_router = commands.spawn((
+    let ai1_router_coord = HexCoord::new(2, -2);
+    let ai1_router = commands.spawn((
         NetworkNode {
-            ip: 210,
-            coord: ai_router_coord,
+            ip: 110,
+            coord: ai1_router_coord,
             node_type: NodeType::Router,
-            owner: Owner::AI,
+            owner: Owner::AI1,
         },
         RoutingTable::default(),
-        Transform::from_translation(ai_router_coord.to_world(1.0)),
+        Transform::from_translation(ai1_router_coord.to_world(1.0)),
     )).id();
 
     commands.spawn(NetworkLink {
-        node_a: ai_dc,
-        node_b: ai_router,
+        node_a: ai1_dc,
+        node_b: ai1_router,
         link_type: LinkType::Copper,
         is_active: true,
     });
 
-    // 4. Spawn Cities (Center line)
-    // Small City at (0, -1) -> 10 BW/s
-    let small_city_coord = HexCoord::new(0, -1);
-    commands.spawn((
+    // 4. Spawn AI2 Subnet (North side: Lime Green)
+    let ai2_dc_coord = HexCoord::new(0, 3);
+    let ai2_dc = commands.spawn((
         NetworkNode {
-            ip: 150,
-            coord: small_city_coord,
-            node_type: NodeType::City,
-            owner: Owner::Neutral,
+            ip: 200,
+            coord: ai2_dc_coord,
+            node_type: NodeType::DataCenter,
+            owner: Owner::AI2,
         },
         RoutingTable::default(),
-        CityDominance {
-            size: CitySize::Small,
-            total_payout_rate: 10.0,
-            ..default()
-        },
-        Transform::from_translation(small_city_coord.to_world(1.0)),
-    ));
+        Transform::from_translation(ai2_dc_coord.to_world(1.0)),
+    )).id();
 
-    // Medium City at (0, 0) -> 25 BW/s
-    let med_city_coord = HexCoord::new(0, 0);
-    commands.spawn((
+    let ai2_router_coord = HexCoord::new(0, 2);
+    let ai2_router = commands.spawn((
         NetworkNode {
-            ip: 151,
-            coord: med_city_coord,
-            node_type: NodeType::City,
-            owner: Owner::Neutral,
+            ip: 210,
+            coord: ai2_router_coord,
+            node_type: NodeType::Router,
+            owner: Owner::AI2,
         },
         RoutingTable::default(),
-        CityDominance {
-            size: CitySize::Medium,
-            total_payout_rate: 25.0,
-            ..default()
-        },
-        Transform::from_translation(med_city_coord.to_world(1.0)),
-    ));
+        Transform::from_translation(ai2_router_coord.to_world(1.0)),
+    )).id();
 
-    // Large City at (0, 1) -> 50 BW/s
-    let large_city_coord = HexCoord::new(0, 1);
-    commands.spawn((
+    commands.spawn(NetworkLink {
+        node_a: ai2_dc,
+        node_b: ai2_router,
+        link_type: LinkType::Copper,
+        is_active: true,
+    });
+
+    // 5. Spawn AI3 Subnet (South side: Orchid Purple)
+    let ai3_dc_coord = HexCoord::new(0, -3);
+    let ai3_dc = commands.spawn((
         NetworkNode {
-            ip: 152,
-            coord: large_city_coord,
-            node_type: NodeType::City,
-            owner: Owner::Neutral,
+            ip: 300,
+            coord: ai3_dc_coord,
+            node_type: NodeType::DataCenter,
+            owner: Owner::AI3,
         },
         RoutingTable::default(),
-        CityDominance {
-            size: CitySize::Large,
-            total_payout_rate: 50.0,
-            ..default()
+        Transform::from_translation(ai3_dc_coord.to_world(1.0)),
+    )).id();
+
+    let ai3_router_coord = HexCoord::new(0, -2);
+    let ai3_router = commands.spawn((
+        NetworkNode {
+            ip: 310,
+            coord: ai3_router_coord,
+            node_type: NodeType::Router,
+            owner: Owner::AI3,
         },
-        Transform::from_translation(large_city_coord.to_world(1.0)),
-    ));
+        RoutingTable::default(),
+        Transform::from_translation(ai3_router_coord.to_world(1.0)),
+    )).id();
+
+    commands.spawn(NetworkLink {
+        node_a: ai3_dc,
+        node_b: ai3_router,
+        link_type: LinkType::Copper,
+        is_active: true,
+    });
+
+    // 6. Spawn Cities (Center region)
+    let city_coords = [
+        (HexCoord::new(0, 0), CitySize::Medium, 150, 25.0),
+        (HexCoord::new(-1, 1), CitySize::Small, 151, 10.0),
+        (HexCoord::new(1, -1), CitySize::Small, 152, 10.0),
+        (HexCoord::new(0, -1), CitySize::Large, 153, 50.0),
+    ];
+
+    for (coord, size, ip, payout) in city_coords {
+        commands.spawn((
+            NetworkNode {
+                ip,
+                coord,
+                node_type: NodeType::City,
+                owner: Owner::Neutral,
+            },
+            RoutingTable::default(),
+            CityDominance {
+                size,
+                total_payout_rate: payout,
+                ..default()
+            },
+            Transform::from_translation(coord.to_world(1.0)),
+        ));
+    }
 }

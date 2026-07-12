@@ -46,30 +46,30 @@ fn test_city_dominance_mechanic() {
         ))
         .id();
 
-    // AI Main Data Center (IP 200)
+    // AI1 Main Data Center (IP 100)
     let ai_dc = app
         .world_mut()
         .spawn((
             NetworkNode {
-                ip: 200,
+                ip: 100,
                 coord: HexCoord::new(2, 0),
                 node_type: NodeType::DataCenter,
-                owner: Owner::AI,
+                owner: Owner::AI1,
             },
             strategy_game::simulation::RoutingTable::default(),
             Transform::from_translation(HexCoord::new(2, 0).to_world(1.0)),
         ))
         .id();
 
-    // AI Router at (1, 0)
+    // AI1 Router at (1, 0)
     let ai_router = app
         .world_mut()
         .spawn((
             NetworkNode {
-                ip: 210,
+                ip: 110,
                 coord: HexCoord::new(1, 0),
                 node_type: NodeType::Router,
-                owner: Owner::AI,
+                owner: Owner::AI1,
             },
             strategy_game::simulation::RoutingTable::default(),
             Transform::from_translation(HexCoord::new(1, 0).to_world(1.0)),
@@ -112,7 +112,7 @@ fn test_city_dominance_mechanic() {
         is_active: true,
     });
 
-    // Connect Player Router -> City via Copper Link (Bandwidth capacity: 5, cost: 3)
+    // Connect Player Router -> City via Copper Link (Bandwidth capacity: 5)
     app.world_mut().spawn(NetworkLink {
         node_a: player_router,
         node_b: city,
@@ -120,7 +120,7 @@ fn test_city_dominance_mechanic() {
         is_active: true,
     });
 
-    // Connect AI Router -> City via Fiber Link (Bandwidth capacity: 25, cost: 1)
+    // Connect AI Router -> City via Fiber Link (Bandwidth capacity: 25)
     app.world_mut().spawn(NetworkLink {
         node_a: ai_router,
         node_b: city,
@@ -135,7 +135,7 @@ fn test_city_dominance_mechanic() {
     // Player: DC(10) -> Router(20) [cost 3] -> City(150) [cost 3]. Total cost = 6. Latency factor = 10.0 / 6.0 = 1.6667
     // Throughput Player = 5.0
     // Player Dominance = 5.0 * 1.6667 = 8.333
-    // AI: DC(200) -> Router(210) [cost 3] -> City(150) [cost 1]. Total cost = 4. Latency factor = 10.0 / 4.0 = 2.5
+    // AI1: DC(100) -> Router(110) [cost 3] -> City(150) [cost 1]. Total cost = 4. Latency factor = 10.0 / 4.0 = 2.5
     // Throughput AI = 25.0
     // AI Dominance = 25.0 * 2.5 = 62.5
     // Player control = 8.333 / (8.333 + 62.5) = 11.76%
@@ -143,13 +143,13 @@ fn test_city_dominance_mechanic() {
     {
         let city_dom = app.world().get::<CityDominance>(city).unwrap();
         assert!(city_dom.player_dominance > 0.0);
-        assert!(city_dom.ai_dominance > city_dom.player_dominance);
+        assert!(city_dom.ai1_dominance > city_dom.player_dominance);
         
         let expected_player_pct = 8.333 / (8.333 + 62.5);
         let expected_ai_pct = 62.5 / (8.333 + 62.5);
         
         assert!((city_dom.player_control_pct - expected_player_pct).abs() < 0.01);
-        assert!((city_dom.ai_control_pct - expected_ai_pct).abs() < 0.01);
+        assert!((city_dom.ai1_control_pct - expected_ai_pct).abs() < 0.01);
     }
 }
 
@@ -224,7 +224,9 @@ fn run_simulated_game(starting_bandwidth: f32) -> Option<u32> {
     {
         let mut resources = app.world_mut().resource_mut::<GameResources>();
         resources.player_bandwidth = starting_bandwidth;
-        resources.ai_bandwidth = 0.0;
+        resources.ai1_bandwidth = 0.0;
+        resources.ai2_bandwidth = 0.0;
+        resources.ai3_bandwidth = 0.0;
     }
 
     let mut connected_small = false;
@@ -300,10 +302,44 @@ fn test_starting_resources_tuning() {
         }
     }
 
-    // Verify that starting with 0.0 or 10.0 bandwidth is extremely slow because they must wait
-    // for passive trickle (1.0 BW/s) to even build the first link.
-    // Assert that starting with 50.0+ BW allows completing the sequence significantly faster than starting with 10.0.
     if let (Some(t_10), Some(t_50)) = (results[1].1, results[2].1) {
         assert!(t_50 < t_10, "Starting with 50 BW should be faster than starting with 10 BW");
     }
+}
+
+#[test]
+fn test_multiteam_buyout_elimination() {
+    let mut app = setup_test_app();
+
+    // Spawn Player node and AI1 node
+    let player_node = app.world_mut().spawn(NetworkNode {
+        ip: 10,
+        coord: HexCoord::new(-3, 0),
+        node_type: NodeType::DataCenter,
+        owner: Owner::Player,
+    }).id();
+
+    let ai1_node = app.world_mut().spawn(NetworkNode {
+        ip: 100,
+        coord: HexCoord::new(3, -3),
+        node_type: NodeType::DataCenter,
+        owner: Owner::AI1,
+    }).id();
+
+    // Trigger AI1 elimination
+    {
+        let mut resources = app.world_mut().resource_mut::<GameResources>();
+        resources.ai1_eliminated = true;
+    }
+
+    // Run 1 frame to trigger handle_eliminations system
+    app.update();
+
+    // Verify AI1 node has been neutralized (owner set to Owner::Neutral)
+    let ai_node_comp = app.world().get::<NetworkNode>(ai1_node).unwrap();
+    assert_eq!(ai_node_comp.owner, Owner::Neutral);
+
+    // Verify Player node is still active
+    let p_node_comp = app.world().get::<NetworkNode>(player_node).unwrap();
+    assert_eq!(p_node_comp.owner, Owner::Player);
 }

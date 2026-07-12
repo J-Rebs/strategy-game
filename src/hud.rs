@@ -39,6 +39,7 @@ fn draw_hud(
     mut player_controls: ResMut<PlayerControls>,
     mut nodes: Query<(Entity, &mut NetworkNode, &RoutingTable, Option<&CityDominance>)>,
     tiles: Query<&HexTile>,
+    cities_query: Query<&CityDominance>,
     mut commands: Commands,
     mut ip_sequence: Local<u32>,
 ) {
@@ -76,7 +77,7 @@ fn draw_hud(
         });
     });
 
-    // 1. Top Panel: Stats
+     // 1. Top Panel: Stats
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
             ui.heading(egui::RichText::new("PacketCommand //").color(egui::Color32::from_rgb(0, 240, 255)).strong());
@@ -84,15 +85,37 @@ fn draw_hud(
             ui.label(format!("Cycle: {}", game_resources.game_tick));
             ui.separator();
             
-            // Bandwidth
-            ui.label(egui::RichText::new(format!("Player BW: {:.1} Gbps", game_resources.player_bandwidth))
-                .color(egui::Color32::from_rgb(0, 255, 180)).strong());
+            // Bandwidth balances
+            if game_resources.player_eliminated {
+                ui.label(egui::RichText::new("Player: ELIMINATED").color(egui::Color32::GRAY));
+            } else {
+                ui.label(egui::RichText::new(format!("Player: {:.1} Gbps", game_resources.player_bandwidth))
+                    .color(egui::Color32::from_rgb(0, 240, 255)).strong());
+            }
             ui.separator();
-            ui.label(egui::RichText::new(format!("AI BW: {:.1} Gbps", game_resources.ai_bandwidth))
-                .color(egui::Color32::from_rgb(255, 90, 140)).strong());
+            if game_resources.ai1_eliminated {
+                ui.label(egui::RichText::new("AI 1: ELIMINATED").color(egui::Color32::GRAY));
+            } else {
+                ui.label(egui::RichText::new(format!("AI 1: {:.1} Gbps", game_resources.ai1_bandwidth))
+                    .color(egui::Color32::from_rgb(255, 90, 140)).strong());
+            }
+            ui.separator();
+            if game_resources.ai2_eliminated {
+                ui.label(egui::RichText::new("AI 2: ELIMINATED").color(egui::Color32::GRAY));
+            } else {
+                ui.label(egui::RichText::new(format!("AI 2: {:.1} Gbps", game_resources.ai2_bandwidth))
+                    .color(egui::Color32::from_rgb(100, 255, 100)).strong());
+            }
+            ui.separator();
+            if game_resources.ai3_eliminated {
+                ui.label(egui::RichText::new("AI 3: ELIMINATED").color(egui::Color32::GRAY));
+            } else {
+                ui.label(egui::RichText::new(format!("AI 3: {:.1} Gbps", game_resources.ai3_bandwidth))
+                    .color(egui::Color32::from_rgb(220, 100, 220)).strong());
+            }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new("Vibe: Undersea Ocean Reef").color(egui::Color32::from_rgb(0, 200, 255)));
+                ui.label(egui::RichText::new("Vibe: Cyber Grid").color(egui::Color32::from_rgb(0, 240, 255)));
             });
         });
     });
@@ -126,8 +149,6 @@ fn draw_hud(
         ).clicked() {
             player_controls.active_tool = SelectedTool::BuildFiberLink;
         }
-
-        // No CPU upgrades or attack vectors in simplified version
 
         // 3. Purchase Nodes on selected empty hex
         if let Some(coord) = player_controls.selected_hex {
@@ -187,7 +208,9 @@ fn draw_hud(
                 
                 let owner_color = match node.owner {
                     Owner::Player => egui::Color32::from_rgb(0, 240, 255),
-                    Owner::AI => egui::Color32::from_rgb(255, 90, 140),
+                    Owner::AI1 => egui::Color32::from_rgb(255, 90, 140),
+                    Owner::AI2 => egui::Color32::from_rgb(100, 255, 100),
+                    Owner::AI3 => egui::Color32::from_rgb(220, 100, 220),
                     Owner::Neutral => egui::Color32::GRAY,
                 };
                 ui.label(egui::RichText::new(format!("Owner: {:?}", node.owner)).color(owner_color).strong());
@@ -197,10 +220,14 @@ fn draw_hud(
                     ui.colored_label(egui::Color32::from_rgb(255, 215, 0), "City Dominance & Control");
                     ui.label(format!("Yield: {:.1} BW/sec", dom.total_payout_rate));
                     ui.label(format!("Player Share: {:.2} BW/sec", dom.player_control_pct * dom.total_payout_rate));
-                    ui.label(format!("AI Share: {:.2} BW/sec", dom.ai_control_pct * dom.total_payout_rate));
+                    ui.label(format!("AI 1 Share: {:.2} BW/sec", dom.ai1_control_pct * dom.total_payout_rate));
+                    ui.label(format!("AI 2 Share: {:.2} BW/sec", dom.ai2_control_pct * dom.total_payout_rate));
+                    ui.label(format!("AI 3 Share: {:.2} BW/sec", dom.ai3_control_pct * dom.total_payout_rate));
                     
                     let player_pct = dom.player_control_pct;
-                    let ai_pct = dom.ai_control_pct;
+                    let ai1_pct = dom.ai1_control_pct;
+                    let ai2_pct = dom.ai2_control_pct;
+                    let ai3_pct = dom.ai3_control_pct;
 
                     // Donut Chart
                     ui.vertical_centered(|ui| {
@@ -224,15 +251,29 @@ fn draw_hud(
                             painter.add(egui::Shape::convex_polygon(points, color, egui::Stroke::NONE));
                         };
                         
-                        if player_pct > 0.0 || ai_pct > 0.0 {
+                        let total_pct = player_pct + ai1_pct + ai2_pct + ai3_pct;
+                        if total_pct > 0.0 {
                             let start_angle = -std::f32::consts::FRAC_PI_2;
                             let player_sweep = player_pct * std::f32::consts::TAU;
+                            let ai1_sweep = ai1_pct * std::f32::consts::TAU;
+                            let ai2_sweep = ai2_pct * std::f32::consts::TAU;
+                            let ai3_sweep = ai3_pct * std::f32::consts::TAU;
                             
+                            let mut current_angle = start_angle;
                             if player_pct > 0.0 {
-                                draw_sector(painter, center, radius, start_angle, start_angle + player_sweep, egui::Color32::from_rgb(0, 240, 255));
+                                draw_sector(painter, center, radius, current_angle, current_angle + player_sweep, egui::Color32::from_rgb(0, 240, 255));
+                                current_angle += player_sweep;
                             }
-                            if ai_pct > 0.0 {
-                                draw_sector(painter, center, radius, start_angle + player_sweep, start_angle + std::f32::consts::TAU, egui::Color32::from_rgb(255, 90, 140));
+                            if ai1_pct > 0.0 {
+                                draw_sector(painter, center, radius, current_angle, current_angle + ai1_sweep, egui::Color32::from_rgb(255, 90, 140));
+                                current_angle += ai1_sweep;
+                            }
+                            if ai2_pct > 0.0 {
+                                draw_sector(painter, center, radius, current_angle, current_angle + ai2_sweep, egui::Color32::from_rgb(100, 255, 100));
+                                current_angle += ai2_sweep;
+                            }
+                            if ai3_pct > 0.0 {
+                                draw_sector(painter, center, radius, current_angle, current_angle + ai3_sweep, egui::Color32::from_rgb(220, 100, 220));
                             }
                         } else {
                             painter.circle_filled(center, radius, egui::Color32::from_gray(60));
@@ -243,15 +284,18 @@ fn draw_hud(
                     });
 
                     ui.label(format!("Player Control: {:.1}%", player_pct * 100.0));
-                    ui.label(format!("AI Control: {:.1}%", ai_pct * 100.0));
+                    ui.label(format!("AI 1 Control: {:.1}%", ai1_pct * 100.0));
+                    ui.label(format!("AI 2 Control: {:.1}%", ai2_pct * 100.0));
+                    ui.label(format!("AI 3 Control: {:.1}%", ai3_pct * 100.0));
                     ui.separator();
                     ui.label(format!("Player Dominance: {:.1}", dom.player_dominance));
-                    ui.label(format!("AI Dominance: {:.1}", dom.ai_dominance));
+                    ui.label(format!("AI 1 Dominance: {:.1}", dom.ai1_dominance));
+                    ui.label(format!("AI 2 Dominance: {:.1}", dom.ai2_dominance));
+                    ui.label(format!("AI 3 Dominance: {:.1}", dom.ai3_dominance));
                 }
 
                 if node.node_type == NodeType::Router && node.owner == Owner::Player {
                     ui.separator();
-                    // Connected back to Player's Main DC (IP 10)
                     let is_connected = routing_table.route_costs.contains_key(&10) || node.ip == 10;
                     if is_connected {
                         if ui.button("⚡ Upgrade to Data Center (120 BW)").clicked() {
@@ -262,6 +306,29 @@ fn draw_hud(
                         }
                     } else {
                         ui.colored_label(egui::Color32::from_rgb(255, 90, 90), "⚠️ Cannot Upgrade: Lay wire back to Main Data Center first!");
+                    }
+                }
+
+                if node.node_type == NodeType::DataCenter && node.owner != Owner::Player && node.owner != Owner::Neutral {
+                    let target_owner = node.owner;
+                    let cost = crate::simulation::get_buyout_cost(target_owner, &cities_query);
+                    ui.separator();
+                    ui.colored_label(egui::Color32::from_rgb(255, 215, 0), "🏢 Target Main Data Center");
+                    ui.label(format!("Buyout Cost: {:.1} BW", cost));
+                    
+                    let can_afford = game_resources.player_bandwidth >= cost;
+                    if can_afford {
+                        if ui.button(format!("🛒 Buy Out {:?}", target_owner)).clicked() {
+                            game_resources.player_bandwidth -= cost;
+                            match target_owner {
+                                Owner::AI1 => game_resources.ai1_eliminated = true,
+                                Owner::AI2 => game_resources.ai2_eliminated = true,
+                                Owner::AI3 => game_resources.ai3_eliminated = true,
+                                _ => {}
+                            }
+                        }
+                    } else {
+                        ui.colored_label(egui::Color32::from_rgb(255, 90, 90), "⚠️ Cannot Afford Buyout");
                     }
                 }
 
@@ -278,6 +345,31 @@ fn draw_hud(
                 player_controls.selected_node = None;
             }
         });
+    }
+
+    // Victory / Defeat Overlays
+    if game_resources.player_eliminated {
+        egui::Window::new("💀 GAME OVER")
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.heading(egui::RichText::new("DEFEAT").color(egui::Color32::RED).strong().size(28.0));
+                    ui.label("Your Main Data Center has been bought out by the competition.");
+                });
+            });
+    } else if game_resources.ai1_eliminated && game_resources.ai2_eliminated && game_resources.ai3_eliminated {
+        egui::Window::new("🎉 VICTORY")
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .collapsible(false)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.heading(egui::RichText::new("VICTORY").color(egui::Color32::GREEN).strong().size(28.0));
+                    ui.label("You have successfully bought out all competing networks!");
+                });
+            });
     }
 }
 
