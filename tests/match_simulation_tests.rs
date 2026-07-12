@@ -5,6 +5,15 @@ use strategy_game::simulation::{
     SimulationPlugin, CityDominance, CitySize,
 };
 
+// =========================================================================
+// PACKETCOMMAND INTEGRATION TESTS & MATCH SIMULATIONS
+// =========================================================================
+// This file executes integration tests by manually spinning up a Bevy ECS App,
+// injecting entities (nodes, links, cities), and advancing the game clock (`app.update()`).
+//
+// These tests serve as documentation for how rules, OSPF routing, and trickle income calculate.
+
+/// Helper: Instantiates a minimal headless Bevy application with the backend simulation rules.
 fn setup_test_app() -> App {
     let mut app = App::new();
     app.add_plugins(SimulationPlugin);
@@ -15,7 +24,7 @@ fn setup_test_app() -> App {
 fn test_city_dominance_mechanic() {
     let mut app = setup_test_app();
 
-    // 1. Spawning network nodes:
+    // 1. Spawning network nodes onto the test world:
     // Player Main Data Center (IP 10)
     let player_dc = app
         .world_mut()
@@ -96,7 +105,7 @@ fn test_city_dominance_mechanic() {
         ))
         .id();
 
-    // Connect Player DC -> Player Router
+    // Connect Player DC -> Player Router via copper wire
     app.world_mut().spawn(NetworkLink {
         node_a: player_dc,
         node_b: player_router,
@@ -220,7 +229,7 @@ fn run_simulated_game(starting_bandwidth: f32) -> Option<u32> {
         Transform::from_translation(HexCoord::new(0, 0).to_world(1.0)),
     )).id();
 
-    // Set starting player/AI bandwidth
+    // Set starting player/AI bandwidth accounts
     {
         let mut resources = app.world_mut().resource_mut::<GameResources>();
         resources.player_bandwidth = starting_bandwidth;
@@ -289,7 +298,7 @@ fn run_simulated_game(starting_bandwidth: f32) -> Option<u32> {
 
 #[test]
 fn test_starting_resources_tuning() {
-    // Run simulation with different starting resources
+    // Run simulation with different starting resources to tune play speeds
     let results = [0.0, 10.0, 50.0, 100.0, 200.0].map(|bw| {
         (bw, run_simulated_game(bw))
     });

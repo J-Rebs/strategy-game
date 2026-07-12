@@ -1,47 +1,61 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use crate::simulation::{NetworkNode, NetworkLink, Owner, NodeType, LinkType, GameResources, RoutingTable, CityDominance};
-use crate::hex::{HexCoord, HexTile, HexTileType};
+use crate::simulation::{GameResources, NetworkNode, NetworkLink, RoutingTable, NodeType, LinkType, Owner, CityDominance};
+use crate::hex::HexCoord;
 use crate::rendering::MainCamera;
 
-// --- Player Controls Resource ---
-#[derive(Resource, Default)]
-pub struct PlayerControls {
-    pub hovered_hex: Option<HexCoord>,
-    pub selected_hex: Option<HexCoord>,
-    pub selected_node: Option<Entity>,
-    pub link_start_node: Option<Entity>,
-    pub active_tool: SelectedTool,
-}
+// =========================================================================
+// PACKETCOMMAND INTERFACE & MOUSE INPUTS (HUD)
+// =========================================================================
+// This file implements the graphical overlays, dashboard statistics, donut charts,
+// and user input click behaviors (tool selections and node building).
+//
+// It integrates Bevy with `egui` (via the `bevy_egui` library).
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// Selected toolbar action for laying wires or buying routers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Reflect)]
 pub enum SelectedTool {
     #[default]
     Inspect,
-    BuildCopperLink,
-    BuildFiberLink,
+    BuildRouter,
+    LayWire,
+}
+
+/// ECS Resource: Tracks player selection states, hovering, and tool modes.
+#[derive(Resource, Default, Debug, Clone, Reflect)]
+pub struct PlayerControls {
+    pub selected_tool: SelectedTool,
+    pub selected_node: Option<Entity>,
+    pub selected_node_coord: Option<HexCoord>,
+    pub hovered_hex: Option<HexCoord>,
 }
 
 pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(EguiPlugin)
-            .init_resource::<PlayerControls>()
+        // Register dependencies and local resources
+        if !app.is_plugin_added::<EguiPlugin>() {
+            app.add_plugins(EguiPlugin);
+        }
+        app.init_resource::<PlayerControls>()
+            .register_type::<SelectedTool>()
+            .register_type::<PlayerControls>()
             .add_systems(Update, (draw_hud, handle_mouse_picking));
     }
 }
 
-// --- Egui HUD System ---
+// -------------------------------------------------------------------------
+// HUD PANEL & DRAWING SYSTEMS
+// -------------------------------------------------------------------------
+
+/// System: Draws the egui overlay dashboard windows.
 fn draw_hud(
     mut contexts: EguiContexts,
     mut game_resources: ResMut<GameResources>,
     mut player_controls: ResMut<PlayerControls>,
     mut nodes: Query<(Entity, &mut NetworkNode, &RoutingTable, Option<&CityDominance>)>,
-    tiles: Query<&HexTile>,
     cities_query: Query<&CityDominance>,
-    mut commands: Commands,
-    mut ip_sequence: Local<u32>,
 ) {
     let ctx = contexts.ctx_mut();
 
@@ -65,192 +79,111 @@ fn draw_hud(
 
     ctx.set_visuals(visuals);
 
-    // Bottom Guidance Panel for interactive instructions
-    egui::TopBottomPanel::bottom("guidance_panel").show(ctx, |ui| {
+    // -------------------------------------------------------------------------
+    // PANEL A: PLAYER INVENTORY & STATS (Top Screen)
+    // -------------------------------------------------------------------------
+    egui::TopBottomPanel::top("stats_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
-            let guide_text = match player_controls.active_tool {
-                SelectedTool::Inspect => "🔍 INSPECT: Hover over hexes to see coordinates. Click a node to inspect it.",
-                SelectedTool::BuildCopperLink => "🔌 LINK: Click one of your nodes (teal), then click an adjacent node to lay a Copper Cable.",
-                SelectedTool::BuildFiberLink => "⚡ FIBER: Click one of your nodes (teal), then click an adjacent node to lay a high-speed Fiber Cable.",
-            };
-            ui.colored_label(egui::Color32::from_rgb(255, 215, 100), guide_text);
-        });
-    });
+            ui.heading(egui::RichText::new("📡 PacketCommand").color(egui::Color32::from_rgb(70, 110, 145)).strong());
+            ui.separator();
 
-     // 1. Top Panel: Stats
-    egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            ui.heading(egui::RichText::new("PacketCommand //").color(egui::Color32::from_rgb(0, 240, 255)).strong());
+            // Display Bandwidth balances and elimination tags
+            let p_lbl = if game_resources.player_eliminated { "💀 PLAYER (OFFLINE)".to_string() } else { format!("👤 Player: {:.1} BW", game_resources.player_bandwidth) };
+            ui.label(egui::RichText::new(p_lbl).color(egui::Color32::from_rgb(40, 100, 150)).strong());
             ui.separator();
-            ui.label(format!("Cycle: {}", game_resources.game_tick));
-            ui.separator();
-            
-            // Bandwidth balances
-            if game_resources.player_eliminated {
-                ui.label(egui::RichText::new("Player: ELIMINATED").color(egui::Color32::GRAY));
-            } else {
-                ui.label(egui::RichText::new(format!("Player: {:.1} Gbps", game_resources.player_bandwidth))
-                    .color(egui::Color32::from_rgb(0, 240, 255)).strong());
-            }
-            ui.separator();
-            if game_resources.ai1_eliminated {
-                ui.label(egui::RichText::new("AI 1: ELIMINATED").color(egui::Color32::GRAY));
-            } else {
-                ui.label(egui::RichText::new(format!("AI 1: {:.1} Gbps", game_resources.ai1_bandwidth))
-                    .color(egui::Color32::from_rgb(255, 90, 140)).strong());
-            }
-            ui.separator();
-            if game_resources.ai2_eliminated {
-                ui.label(egui::RichText::new("AI 2: ELIMINATED").color(egui::Color32::GRAY));
-            } else {
-                ui.label(egui::RichText::new(format!("AI 2: {:.1} Gbps", game_resources.ai2_bandwidth))
-                    .color(egui::Color32::from_rgb(100, 255, 100)).strong());
-            }
-            ui.separator();
-            if game_resources.ai3_eliminated {
-                ui.label(egui::RichText::new("AI 3: ELIMINATED").color(egui::Color32::GRAY));
-            } else {
-                ui.label(egui::RichText::new(format!("AI 3: {:.1} Gbps", game_resources.ai3_bandwidth))
-                    .color(egui::Color32::from_rgb(220, 100, 220)).strong());
-            }
 
+            let ai1_lbl = if game_resources.ai1_eliminated { "💀 AI 1 (OFFLINE)".to_string() } else { format!("🤖 AI 1: {:.1} BW", game_resources.ai1_bandwidth) };
+            ui.label(egui::RichText::new(ai1_lbl).color(egui::Color32::from_rgb(150, 60, 50)).strong());
+            ui.separator();
+
+            let ai2_lbl = if game_resources.ai2_eliminated { "💀 AI 2 (OFFLINE)".to_string() } else { format!("🤖 AI 2: {:.1} BW", game_resources.ai2_bandwidth) };
+            ui.label(egui::RichText::new(ai2_lbl).color(egui::Color32::from_rgb(140, 120, 30)).strong());
+            ui.separator();
+
+            let ai3_lbl = if game_resources.ai3_eliminated { "💀 AI 3 (OFFLINE)".to_string() } else { format!("🤖 AI 3: {:.1} BW", game_resources.ai3_bandwidth) };
+            ui.label(egui::RichText::new(ai3_lbl).color(egui::Color32::from_rgb(110, 70, 130)).strong());
+            ui.separator();
+
+            // Dynamic global timer cycle display
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new("Vibe: Cyber Grid").color(egui::Color32::from_rgb(0, 240, 255)));
+                let seconds = game_resources.game_tick as f32 / 60.0;
+                ui.label(format!("Time: {:.1}s", seconds));
             });
         });
     });
 
-    // 2. Left Panel: Construction & Operations
-    egui::SidePanel::left("tools_panel").width_range(200.0..=240.0).show(ctx, |ui| {
-        ui.heading("Construct & Route");
+    // -------------------------------------------------------------------------
+    // PANEL B: TOOLBAR SELECTOR (Left Panel)
+    // -------------------------------------------------------------------------
+    egui::SidePanel::left("toolbar").width_range(160.0..=220.0).show(ctx, |ui| {
+        ui.heading("Operations Toolbar");
         ui.separator();
 
-        ui.label("Cursor Mode:");
-        if ui.selectable_label(player_controls.active_tool == SelectedTool::Inspect, "🔍 Inspect Hexes").clicked() {
-            player_controls.active_tool = SelectedTool::Inspect;
-        }
+        ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::Inspect, "🔍 Inspect Node");
+        ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::BuildRouter, "📟 Buy Router (60 BW)");
+        ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::LayWire, "🔗 Lay Wire (50 BW)");
 
         ui.separator();
-        ui.label("Catan Build Costs:");
-
-        let copper_cost = LinkType::Copper.cost();
-        let fiber_cost = LinkType::Fiber.cost();
-
-        if ui.selectable_label(
-            player_controls.active_tool == SelectedTool::BuildCopperLink,
-            format!("🔌 Lay Copper ({} BW)", copper_cost)
-        ).clicked() {
-            player_controls.active_tool = SelectedTool::BuildCopperLink;
-        }
-
-        if ui.selectable_label(
-            player_controls.active_tool == SelectedTool::BuildFiberLink,
-            format!("⚡ Lay Fiber ({} BW)", fiber_cost)
-        ).clicked() {
-            player_controls.active_tool = SelectedTool::BuildFiberLink;
-        }
-
-        // 3. Purchase Nodes on selected empty hex
-        if let Some(coord) = player_controls.selected_hex {
-            // Check if hex is empty
-            let is_empty = !nodes.iter().any(|(_, node, _, _)| node.coord == coord);
-            
-            // Check if tile is buyable (e.g. not water)
-            let tile = tiles.iter().find(|t| t.coord == coord);
-            let is_land = tile.map_or(false, |t| t.tile_type != HexTileType::Water);
-
-            if is_empty && is_land {
-                ui.separator();
-                ui.label(format!("Empty Land at ({}, {})", coord.q, coord.r));
-                
-                if ui.button("🏗️ Buy Router (60 BW)").clicked() {
-                    if game_resources.player_bandwidth >= 60.0 {
-                        game_resources.player_bandwidth -= 60.0;
-                        if *ip_sequence == 0 {
-                            *ip_sequence = 30; // player IP sequences start at 30
-                        }
-                        *ip_sequence += 1;
-                        
-                        let world_pos = coord.to_world(1.0);
-                        commands.spawn((
-                            NetworkNode {
-                                ip: *ip_sequence,
-                                coord,
-                                node_type: NodeType::Router,
-                                owner: Owner::Player,
-                            },
-                            RoutingTable::default(),
-                            Transform::from_translation(world_pos),
-                        ));
-                    }
-                }
-            }
-        }
-
-        if player_controls.link_start_node.is_some() {
-            ui.separator();
-            ui.colored_label(egui::Color32::from_rgb(255, 200, 0), "Link Source Active. Click next node.");
-            if ui.button("Cancel Active Link").clicked() {
-                player_controls.link_start_node = None;
-            }
-        }
+        ui.heading("Quick Guide");
+        ui.label("1. Select 'Buy Router' and click a green Sage tile adjacent to your active network.");
+        ui.label("2. Select 'Lay Wire', click your DC, then drag/click to connect adjacent routers.");
+        ui.label("3. Select 'Inspect Node' and click a router to upgrade it to a Data Center.");
+        ui.label("4. Capture neutral cities to extract passive bandwidth trickle.");
     });
 
-    // 3. Right Panel: Inspector
+    // -------------------------------------------------------------------------
+    // PANEL C: SELECTION INSPECTOR (Right Panel)
+    // -------------------------------------------------------------------------
     if let Some(selected_entity) = player_controls.selected_node {
-        egui::SidePanel::right("inspector_panel").width_range(260.0..=300.0).show(ctx, |ui| {
+        egui::SidePanel::right("inspector").width_range(280.0..=360.0).show(ctx, |ui| {
             if let Ok((_, mut node, routing_table, city_dom)) = nodes.get_mut(selected_entity) {
-                ui.heading(format!("{:?} Node", node.node_type));
+                ui.heading("Selected Network Device");
                 ui.separator();
 
-                ui.label(format!("Hex Position: ({}, {})", node.coord.q, node.coord.r));
+                ui.label(format!("Coordinate: {:?}", node.coord));
+                ui.label(format!("Type: {:?}", node.node_type));
                 ui.label(format!("IP Address: 10.0.0.{}", node.ip));
-                
-                let owner_color = match node.owner {
-                    Owner::Player => egui::Color32::from_rgb(0, 240, 255),
-                    Owner::AI1 => egui::Color32::from_rgb(255, 90, 140),
-                    Owner::AI2 => egui::Color32::from_rgb(100, 255, 100),
-                    Owner::AI3 => egui::Color32::from_rgb(220, 100, 220),
-                    Owner::Neutral => egui::Color32::GRAY,
-                };
-                ui.label(egui::RichText::new(format!("Owner: {:?}", node.owner)).color(owner_color).strong());
-                
+                ui.label(format!("Occupying Owner: {:?}", node.owner));
+
+                // If selected node is a City, display a colorful territory division donut chart
                 if let Some(dom) = city_dom {
                     ui.separator();
-                    ui.colored_label(egui::Color32::from_rgb(255, 215, 0), "City Dominance & Control");
-                    ui.label(format!("Yield: {:.1} BW/sec", dom.total_payout_rate));
-                    ui.label(format!("Player Share: {:.2} BW/sec", dom.player_control_pct * dom.total_payout_rate));
-                    ui.label(format!("AI 1 Share: {:.2} BW/sec", dom.ai1_control_pct * dom.total_payout_rate));
-                    ui.label(format!("AI 2 Share: {:.2} BW/sec", dom.ai2_control_pct * dom.total_payout_rate));
-                    ui.label(format!("AI 3 Share: {:.2} BW/sec", dom.ai3_control_pct * dom.total_payout_rate));
+                    ui.heading("City Network Shares");
                     
                     let player_pct = dom.player_control_pct;
                     let ai1_pct = dom.ai1_control_pct;
                     let ai2_pct = dom.ai2_control_pct;
                     let ai3_pct = dom.ai3_control_pct;
 
-                    // Donut Chart
-                    ui.vertical_centered(|ui| {
-                        let size = egui::vec2(120.0, 120.0);
-                        let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
-                        let center = rect.center();
-                        let radius = 50.0;
-                        
-                        let painter = ui.painter();
-                        
+                    // egui Painter API for manual vector graphics rendering
+                    let chart_size = 120.0;
+                    let (_, rect) = ui.allocate_space(egui::vec2(chart_size, chart_size));
+                    let painter = ui.painter_at(rect);
+                    let center = rect.center();
+                    let radius = chart_size * 0.45;
+
+                    ui.painter_at(rect).image(
+                        egui::TextureId::default(),
+                        rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::TRANSPARENT
+                    );
+
+                    ui.horizontal(|_| {
+                        // Drawing divisions as convex polygons
                         let draw_sector = |painter: &egui::Painter, center: egui::Pos2, radius: f32, start_angle: f32, end_angle: f32, color: egui::Color32| {
                             let num_points = 24;
                             let mut points = vec![center];
                             for i in 0..=num_points {
                                 let t = i as f32 / num_points as f32;
-                                let angle = start_angle + t * (end_angle - start_angle);
-                                let x = center.x + radius * angle.cos();
-                                let y = center.y + radius * angle.sin();
-                                points.push(egui::pos2(x, y));
+                                  let angle = start_angle + t * (end_angle - start_angle);
+                                  let x = center.x + radius * angle.cos();
+                                  let y = center.y + radius * angle.sin();
+                                  points.push(egui::pos2(x, y));
                             }
                             painter.add(egui::Shape::convex_polygon(points, color, egui::Stroke::NONE));
                         };
-                        
+
                         let total_pct = player_pct + ai1_pct + ai2_pct + ai3_pct;
                         if total_pct > 0.0 {
                             let start_angle = -std::f32::consts::FRAC_PI_2;
@@ -261,26 +194,26 @@ fn draw_hud(
                             
                             let mut current_angle = start_angle;
                             if player_pct > 0.0 {
-                                draw_sector(painter, center, radius, current_angle, current_angle + player_sweep, egui::Color32::from_rgb(0, 240, 255));
+                                draw_sector(&painter, center, radius, current_angle, current_angle + player_sweep, egui::Color32::from_rgb(85, 140, 190));
                                 current_angle += player_sweep;
                             }
                             if ai1_pct > 0.0 {
-                                draw_sector(painter, center, radius, current_angle, current_angle + ai1_sweep, egui::Color32::from_rgb(255, 90, 140));
+                                draw_sector(&painter, center, radius, current_angle, current_angle + ai1_sweep, egui::Color32::from_rgb(205, 110, 95));
                                 current_angle += ai1_sweep;
                             }
                             if ai2_pct > 0.0 {
-                                draw_sector(painter, center, radius, current_angle, current_angle + ai2_sweep, egui::Color32::from_rgb(100, 255, 100));
+                                draw_sector(&painter, center, radius, current_angle, current_angle + ai2_sweep, egui::Color32::from_rgb(220, 200, 100));
                                 current_angle += ai2_sweep;
                             }
                             if ai3_pct > 0.0 {
-                                draw_sector(painter, center, radius, current_angle, current_angle + ai3_sweep, egui::Color32::from_rgb(220, 100, 220));
+                                draw_sector(&painter, center, radius, current_angle, current_angle + ai3_sweep, egui::Color32::from_rgb(170, 150, 200));
                             }
                         } else {
-                            painter.circle_filled(center, radius, egui::Color32::from_gray(60));
+                            painter.circle_filled(center, radius, egui::Color32::from_gray(210));
                         }
                         
-                        // Donut inner hole
-                        painter.circle_filled(center, radius * 0.5, egui::Color32::from_rgb(8, 28, 40));
+                        // Donut inner hole: draws background color over polygon center
+                        painter.circle_filled(center, radius * 0.5, egui::Color32::from_rgb(240, 245, 248));
                     });
 
                     ui.label(format!("Player Control: {:.1}%", player_pct * 100.0));
@@ -305,7 +238,7 @@ fn draw_hud(
                             }
                         }
                     } else {
-                        ui.colored_label(egui::Color32::from_rgb(255, 90, 90), "⚠️ Cannot Upgrade: Lay wire back to Main Data Center first!");
+                        ui.colored_label(egui::Color32::from_rgb(200, 80, 70), "⚠️ Cannot Upgrade: Lay wire back to Main Data Center first!");
                     }
                 }
 
@@ -353,7 +286,9 @@ fn draw_hud(
         });
     }
 
-    // Victory / Defeat Overlays
+    // -------------------------------------------------------------------------
+    // PANEL D: VICTORY / DEFEAT SCREENS
+    // -------------------------------------------------------------------------
     if game_resources.player_eliminated {
         egui::Window::new("💀 GAME OVER")
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -361,7 +296,7 @@ fn draw_hud(
             .resizable(false)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.heading(egui::RichText::new("DEFEAT").color(egui::Color32::RED).strong().size(28.0));
+                    ui.heading(egui::RichText::new("DEFEAT").color(egui::Color32::from_rgb(200, 60, 50)).strong().size(28.0));
                     ui.label("Your Main Data Center has been bought out by the competition.");
                 });
             });
@@ -372,13 +307,18 @@ fn draw_hud(
             .resizable(false)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.heading(egui::RichText::new("VICTORY").color(egui::Color32::GREEN).strong().size(28.0));
+                    ui.heading(egui::RichText::new("VICTORY").color(egui::Color32::from_rgb(60, 160, 80)).strong().size(28.0));
                     ui.label("You have successfully bought out all competing networks!");
                 });
             });
     }
 }
 
+// -------------------------------------------------------------------------
+// MOUSE INTERACTION & WORLD RAYCASTING
+// -------------------------------------------------------------------------
+
+/// System: Converts 2D cursor window coordinates to 3D world coordinates.
 fn handle_mouse_picking(
     mut commands: Commands,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
@@ -389,7 +329,9 @@ fn handle_mouse_picking(
     nodes: Query<(Entity, &mut NetworkNode, &Transform)>,
     links: Query<(Entity, &NetworkLink)>,
     mut contexts: EguiContexts,
+    mut ip_sequence: Local<u32>,
 ) {
+    // If the user's cursor is hovering over an egui panel, bypass game board raycasting
     if contexts.ctx_mut().wants_pointer_input() {
         player_controls.hovered_hex = None;
         return;
@@ -398,93 +340,153 @@ fn handle_mouse_picking(
     let window = windows.single();
     let (camera, camera_transform) = camera_query.single();
 
-    // 1. Raycast for Hover Tracking (Every Frame)
-    let mut hovered_coord = None;
-    if let Some(cursor_position) = window.cursor_position() {
-        if let Some(ray) = camera.viewport_to_world(camera_transform, cursor_position) {
-            if ray.direction.y.abs() > 0.0001 {
-                let t = -ray.origin.y / ray.direction.y;
-                if t > 0.0 {
-                    let intersection_point = ray.origin + ray.direction * t;
-                    let coord = HexCoord::from_world(intersection_point, 1.0);
-                    if coord.is_on_board() {
-                        hovered_coord = Some(coord);
-                    }
-                }
+    // Raycast: Project vector from camera lens through cursor coordinate into 3D space plane Y=0
+    let ray_opt = window.cursor_position()
+        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor));
+
+    let mut plane_intersection = None;
+    if let Some(ray) = ray_opt {
+        // Intersect ray with flat horizontal plane Y = 0
+        if ray.direction.y.abs() > 0.001 {
+            let t = -ray.origin.y / ray.direction.y;
+            if t >= 0.0 {
+                plane_intersection = Some(ray.origin + ray.direction * t);
             }
         }
     }
-    player_controls.hovered_hex = hovered_coord;
 
-    // 2. Click Handling
-    if mouse_button_input.just_pressed(MouseButton::Left) {
-        if let Some(clicked_coord) = hovered_coord {
-            player_controls.selected_hex = Some(clicked_coord);
+    if let Some(pos) = plane_intersection {
+        // Convert physical position coordinate into axial grid index (q, r)
+        let hex_coord = HexCoord::from_world(pos, 1.0);
+        player_controls.hovered_hex = Some(hex_coord);
 
-            // Check if a node structure exists on this HexCoord
+        // Click actions: Triggered when mouse button is pressed
+        if mouse_button_input.just_pressed(MouseButton::Left) {
+            
+            // Check if there is an existing network device on clicked coordinate
             let mut clicked_node = None;
             for (entity, node, _) in nodes.iter() {
-                if node.coord == clicked_coord {
-                    clicked_node = Some((entity, node.owner));
+                if node.coord == hex_coord {
+                    clicked_node = Some((entity, node.ip));
                     break;
                 }
             }
 
-            // Process actions if a node is clicked
-            if let Some((clicked_entity, clicked_owner)) = clicked_node {
-                match player_controls.active_tool {
-                    SelectedTool::Inspect => {
-                        player_controls.selected_node = Some(clicked_entity);
+            match player_controls.selected_tool {
+                SelectedTool::Inspect => {
+                    // Selection inspector mode: store entity and display sidebar
+                    if let Some((entity, _)) = clicked_node {
+                        player_controls.selected_node = Some(entity);
+                        player_controls.selected_node_coord = Some(hex_coord);
+                    } else {
+                        // Clicked empty ground: clear selection
+                        player_controls.selected_node = None;
+                        player_controls.selected_node_coord = None;
                     }
-                    SelectedTool::BuildCopperLink | SelectedTool::BuildFiberLink => {
-                        let link_type = if player_controls.active_tool == SelectedTool::BuildFiberLink {
-                            LinkType::Fiber
-                        } else {
-                            LinkType::Copper
-                        };
+                }
+                SelectedTool::BuildRouter => {
+                    if clicked_node.is_none() {
+                        // Enforce placement rule: Router cost is 60 BW and must link adjacent to active player subnet
+                        let cost = 60.0;
+                        let is_adjacent_to_player = nodes.iter().any(|(_, n, _)| {
+                            n.owner == Owner::Player && n.coord.distance(&hex_coord) == 1
+                        });
 
-                        if let Some(start_entity) = player_controls.link_start_node {
-                            if start_entity != clicked_entity {
-                                // Check link limit
-                                let mut link_exists = false;
-                                for (_, link) in links.iter() {
-                                    if (link.node_a == start_entity && link.node_b == clicked_entity)
-                                        || (link.node_a == clicked_entity && link.node_b == start_entity)
-                                    {
-                                        link_exists = true;
-                                        break;
+                        if is_adjacent_to_player && game_resources.player_bandwidth >= cost {
+                            game_resources.player_bandwidth -= cost;
+                            
+                            // Generate unique IP
+                            *ip_sequence += 1;
+                            let new_ip = 30 + *ip_sequence;
+
+                            // Spawn the Router Node
+                            let new_router = commands.spawn((
+                                NetworkNode {
+                                    ip: new_ip,
+                                    coord: hex_coord,
+                                    node_type: NodeType::Router,
+                                    owner: Owner::Player,
+                                },
+                                RoutingTable::default(),
+                                Transform::from_translation(hex_coord.to_world(1.0)),
+                            )).id();
+
+                            // Automatically wire to the closest adjacent player node
+                            let mut closest_player_node = None;
+                            let mut min_dist = 999;
+                            for (entity, node, _) in nodes.iter() {
+                                if node.owner == Owner::Player {
+                                    let d = node.coord.distance(&hex_coord);
+                                    if d < min_dist {
+                                        min_dist = d;
+                                        closest_player_node = Some(entity);
                                     }
                                 }
-
-                                if !link_exists {
-                                    let cost = link_type.cost();
-                                    if game_resources.player_bandwidth >= cost {
-                                        game_resources.player_bandwidth -= cost;
-                                        commands.spawn(NetworkLink {
-                                            node_a: start_entity,
-                                            node_b: clicked_entity,
-                                            link_type,
-                                            is_active: true,
-                                        });
-                                    }
-                                }
-                                player_controls.link_start_node = None;
                             }
-                        } else {
-                            if clicked_owner == Owner::Player {
-                                player_controls.link_start_node = Some(clicked_entity);
+
+                            if let Some(src_entity) = closest_player_node {
+                                commands.spawn(NetworkLink {
+                                    node_a: src_entity,
+                                    node_b: new_router,
+                                    link_type: LinkType::Copper,
+                                    is_active: true,
+                                });
                             }
                         }
                     }
-                    // CPU upgrades and network attack logic removed in simplified version
                 }
-            } else {
-                player_controls.selected_node = None;
+                SelectedTool::LayWire => {
+                    if let Some((clicked_entity, _)) = clicked_node {
+                        if let Some(source_entity) = player_controls.selected_node {
+                            // Enforce building rules: Cost is 50 BW, only connecting to adjacent tiles
+                            let cost = 50.0;
+                            if source_entity != clicked_entity {
+                                if let Ok((_, src_node, _)) = nodes.get(source_entity) {
+                                    if src_node.coord.distance(&hex_coord) == 1 {
+                                        
+                                        // Ensure link doesn't already exist
+                                        let mut link_exists = false;
+                                        for (_, link) in links.iter() {
+                                            if (link.node_a == source_entity && link.node_b == clicked_entity)
+                                                || (link.node_a == clicked_entity && link.node_b == source_entity)
+                                            {
+                                                link_exists = true;
+                                                break;
+                                            }
+                                        }
+
+                                        if !link_exists && game_resources.player_bandwidth >= cost {
+                                            game_resources.player_bandwidth -= cost;
+                                            
+                                            // Construct the connection wire
+                                            commands.spawn(NetworkLink {
+                                                node_a: source_entity,
+                                                node_b: clicked_entity,
+                                                link_type: LinkType::Copper,
+                                                is_active: true,
+                                            });
+
+                                            // Re-route path coordinates immediately
+                                            player_controls.selected_node = None;
+                                            player_controls.selected_node_coord = None;
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // First click: select the source node to start laying wire from
+                            player_controls.selected_node = Some(clicked_entity);
+                            player_controls.selected_node_coord = Some(hex_coord);
+                        }
+                    } else {
+                        // Clicked empty ground: clear laying wire source
+                        player_controls.selected_node = None;
+                        player_controls.selected_node_coord = None;
+                    }
+                }
             }
-        } else {
-            // Clicked out of bounds
-            player_controls.selected_hex = None;
-            player_controls.selected_node = None;
         }
+    } else {
+        player_controls.hovered_hex = None;
     }
 }

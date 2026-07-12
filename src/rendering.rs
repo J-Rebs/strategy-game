@@ -1,16 +1,23 @@
 use bevy::prelude::*;
 use bevy::math::primitives::Cuboid;
 use crate::simulation::{NetworkNode, NetworkLink, Packet, Owner, NodeType, CityDominance, CitySize};
-use crate::hex::{HexCoord, create_hex_prism_mesh, HexTile};
+use crate::hex::{HexCoord, create_hex_prism_mesh, HexTile, HexTileType};
+
+// =========================================================================
+// PACKETCOMMAND RENDERING & 3D VISUALIZATION
+// =========================================================================
+// This file controls the visual representation of the game board. It is
+// structured as a Bevy Plugin (`RenderingPlugin`) which runs visual sync systems.
+//
+// In ECS, the rendering layer behaves as an observer: it queries the simulation
+// components (like `NetworkNode` and `NetworkLink`) and spawns/updates 3D meshes
+// (PbrBundle) to reflect the backend state.
 
 // --- Marker Components ---
-#[derive(Component)]
-pub struct MainCamera;
+// These are simple empty structs attached to entities to easily query or filter them in systems.
 
 #[derive(Component)]
-pub struct HexTileMeshMarker {
-    pub coord: HexCoord,
-}
+pub struct MainCamera;
 
 #[derive(Component)]
 pub struct NodeMeshMarker {
@@ -28,55 +35,49 @@ pub struct PacketMeshMarker {
 }
 
 #[derive(Component)]
-pub struct HoverHighlight;
+pub struct HoverHighlightMarker;
 
 #[derive(Component)]
-pub struct SelectedHighlight;
+pub struct SelectedHighlightMarker;
 
-// --- Camera State Resource ---
-#[derive(Resource)]
+// --- Resources ---
+
+/// Tracks the position and zoom level of the camera.
+#[derive(Resource, Default)]
 pub struct CameraState {
-    pub center: Vec3,
-    pub distance: f32,
-    pub yaw: f32,
-    pub pitch: f32,
+    pub radius: f32,
+    pub azimuth: f32, // Horizontal rotation
+    pub polar: f32,   // Vertical rotation
 }
 
-impl Default for CameraState {
-    fn default() -> Self {
-        Self {
-            center: Vec3::new(0.0, 0.0, 0.0),
-            distance: 12.0, // Start closer to the action
-            yaw: 0.785398,  // 45 degrees
-            pitch: -0.785398, // -45 degrees
-        }
-    }
-}
-
-// --- Materials Resource ---
-#[derive(Resource)]
-#[allow(dead_code)]
+/// Stores handles to pre-loaded standard materials for our seaside pastel theme.
+///
+/// In Bevy, assets (like meshes, textures, or materials) are loaded once into
+/// an `Assets<T>` catalog. Systems reference them using cheap, cloneable `Handle<T>` pointers,
+/// which avoids duplicating materials in GPU memory.
+#[derive(Resource, Clone)]
 pub struct GameMaterials {
-    pub grass_hex_mat: Handle<StandardMaterial>, // Cyber Grid base
+    // Terrain Tiles
+    pub grass_hex_mat: Handle<StandardMaterial>,
     pub water_hex_mat: Handle<StandardMaterial>,
     pub mountain_hex_mat: Handle<StandardMaterial>,
     pub dc_hex_mat: Handle<StandardMaterial>,
 
-    // Player/AI Node bases
+    // Node Bases (Whitewashed Plaster/Stucco)
     pub player_node_mat: Handle<StandardMaterial>,
     pub ai1_node_mat: Handle<StandardMaterial>,
     pub ai2_node_mat: Handle<StandardMaterial>,
     pub ai3_node_mat: Handle<StandardMaterial>,
     pub neutral_node_mat: Handle<StandardMaterial>,
 
-    // Glow overlays
+    // Node Tops (Pastel Accents)
     pub player_node_glow_mat: Handle<StandardMaterial>,
     pub ai1_node_glow_mat: Handle<StandardMaterial>,
     pub ai2_node_glow_mat: Handle<StandardMaterial>,
     pub ai3_node_glow_mat: Handle<StandardMaterial>,
     pub neutral_node_glow_mat: Handle<StandardMaterial>,
 
-    // Links
+    // Wires (Painted paths)
     pub player_link_mat: Handle<StandardMaterial>,
     pub ai1_link_mat: Handle<StandardMaterial>,
     pub ai2_link_mat: Handle<StandardMaterial>,
@@ -89,7 +90,7 @@ pub struct GameMaterials {
     pub ai2_packet_mat: Handle<StandardMaterial>,
     pub ai3_packet_mat: Handle<StandardMaterial>,
 
-    // Highlights
+    // Outlines
     pub hover_highlight_mat: Handle<StandardMaterial>,
     pub selected_highlight_mat: Handle<StandardMaterial>,
 }
@@ -97,10 +98,12 @@ pub struct GameMaterials {
 pub struct RenderingPlugin;
 
 impl Plugin for RenderingPlugin {
+    /// Configures window backgrounds, builds cameras/lights, and schedules visual updates.
     fn build(&self, app: &mut App) {
         app.insert_resource(CameraState::default())
-            // ClearColor: Happy Sea Mist Sky Blue
+            // ClearColor: Sets the window background color (Happy Sea Mist Sky Blue)
             .insert_resource(ClearColor(Color::srgba(0.88, 0.94, 0.96, 1.0)))
+            // Chains startup systems so camera coordinates register before materials load
             .add_systems(Startup, (setup_camera_and_lights, setup_materials).chain())
             .add_systems(Update, (
                 camera_controls,
@@ -117,7 +120,9 @@ impl Plugin for RenderingPlugin {
 #[derive(Component)]
 pub struct LinkPreviewMarker;
 
-// --- Camera & Lighting Setup ---
+// --- Systems Logic ---
+
+/// System: Spawns the main 3D camera and configures ambient and directional lights.
 fn setup_camera_and_lights(mut commands: Commands) {
     // Spawn 3D camera
     commands.spawn((
@@ -128,13 +133,13 @@ fn setup_camera_and_lights(mut commands: Commands) {
         MainCamera,
     ));
 
-    // Warm, sunny seaside ambient light
+    // Ambient light: Soft lighting applied to every mesh surface regardless of angle (warm sunlit gold)
     commands.insert_resource(AmbientLight {
         color: Color::srgba(1.0, 0.97, 0.92, 1.0),
         brightness: 800.0,
     });
 
-    // Intense golden summer sunbeams casting beautiful shadows
+    // Directional light: Models direct sunlight. Casts crisp shadows from mountains and spires.
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             shadows_enabled: true,
@@ -147,79 +152,79 @@ fn setup_camera_and_lights(mut commands: Commands) {
     });
 }
 
-// --- Initialize Materials ---
+/// System: Initializes materials into Bevy's asset database.
 fn setup_materials(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Grid terrain bases: Quaint coastal maps & sage hills
+    // Terrain Tiles
     let grass_hex_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.65, 0.78, 0.65, 1.0), // Happy sage hill green
         perceptual_roughness: 0.9,
         ..default()
     });
     let water_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.55, 0.78, 0.85, 1.0), // Sparkling seaside aquamarine blue
+        base_color: Color::srgba(0.55, 0.78, 0.85, 1.0), // Seaside aquamarine blue
         perceptual_roughness: 0.3,
         ..default()
     });
     let mountain_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.88, 0.76, 0.68, 1.0), // Soft warm clay mountain ridge
+        base_color: Color::srgba(0.88, 0.76, 0.68, 1.0), // Warm terracotta mountain clay
         perceptual_roughness: 0.8,
         ..default()
     });
     let dc_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.92, 0.86, 0.75, 1.0), // Soft warm beach sand
+        base_color: Color::srgba(0.92, 0.86, 0.75, 1.0), // Soft beach sand
         perceptual_roughness: 0.5,
         ..default()
     });
 
-    // Node bases (Quaint plaster towers/bell-towers)
+    // Node bases (Whitewashed stucco plaster towers)
     let player_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.35, 0.55, 0.75, 1.0), // Coastal blue base
+        base_color: Color::srgba(0.35, 0.55, 0.75, 1.0),
         perceptual_roughness: 0.5,
         ..default()
     });
     let ai1_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.65, 0.35, 0.28, 1.0), // Terracotta clay base
+        base_color: Color::srgba(0.65, 0.35, 0.28, 1.0),
         perceptual_roughness: 0.5,
         ..default()
     });
     let ai2_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.75, 0.65, 0.3, 1.0), // Sunny ochre base
+        base_color: Color::srgba(0.75, 0.65, 0.3, 1.0),
         perceptual_roughness: 0.5,
         ..default()
     });
     let ai3_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.55, 0.48, 0.68, 1.0), // Soft lavender base
+        base_color: Color::srgba(0.55, 0.48, 0.68, 1.0),
         perceptual_roughness: 0.5,
         ..default()
     });
     let neutral_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.85, 0.83, 0.78, 1.0), // Stucco plaster white
+        base_color: Color::srgba(0.85, 0.83, 0.78, 1.0),
         perceptual_roughness: 0.7,
         ..default()
     });
 
     // Spire tops (Accent pastel lighthouses & mission tiles)
     let player_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.55, 0.75, 0.9, 1.0), // Cornflower blue top
+        base_color: Color::srgba(0.55, 0.75, 0.9, 1.0),
         perceptual_roughness: 0.6,
         ..default()
     });
     let ai1_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.85, 0.55, 0.45, 1.0), // Warm terracotta top
+        base_color: Color::srgba(0.85, 0.55, 0.45, 1.0),
         perceptual_roughness: 0.6,
         ..default()
     });
     let ai2_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.95, 0.88, 0.52, 1.0), // Buttercup yellow top
+        base_color: Color::srgba(0.95, 0.88, 0.52, 1.0),
         perceptual_roughness: 0.6,
         ..default()
     });
     let ai3_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.75, 0.68, 0.85, 1.0), // Lilac top
+        base_color: Color::srgba(0.75, 0.68, 0.85, 1.0),
         perceptual_roughness: 0.6,
         ..default()
     });
@@ -231,32 +236,32 @@ fn setup_materials(
 
     // Links (Symmetric painted paths / cable routes)
     let player_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.5, 0.72, 0.9, 0.8), // Soft sky blue cable
+        base_color: Color::srgba(0.5, 0.72, 0.9, 0.8),
         perceptual_roughness: 0.7,
         ..default()
     });
     let ai1_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.85, 0.45, 0.35, 0.8), // Soft terracotta cable
+        base_color: Color::srgba(0.85, 0.45, 0.35, 0.8),
         perceptual_roughness: 0.7,
         ..default()
     });
     let ai2_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.95, 0.85, 0.45, 0.8), // Soft golden yellow cable
+        base_color: Color::srgba(0.95, 0.85, 0.45, 0.8),
         perceptual_roughness: 0.7,
         ..default()
     });
     let ai3_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.72, 0.65, 0.85, 0.8), // Soft lilac purple cable
+        base_color: Color::srgba(0.72, 0.65, 0.85, 0.8),
         perceptual_roughness: 0.7,
         ..default()
     });
     let neutral_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.78, 0.75, 0.7, 0.4), // Earthy hemp rope
+        base_color: Color::srgba(0.78, 0.75, 0.7, 0.4),
         perceptual_roughness: 0.9,
         ..default()
     });
 
-    // Packets (Happy visual boxes traveling)
+    // Packets
     let player_packet_mat = materials.add(StandardMaterial {
         base_color: Color::srgba(0.6, 0.8, 0.95, 1.0),
         ..default()
@@ -275,11 +280,11 @@ fn setup_materials(
     });
 
     let hover_highlight_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.95, 0.6, 0.5), // Sunlit yellow ring
+        base_color: Color::srgba(1.0, 0.95, 0.6, 0.5),
         ..default()
     });
     let selected_highlight_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.5, 0.85, 0.7, 0.6), // Sea glass green ring
+        base_color: Color::srgba(0.5, 0.85, 0.7, 0.6),
         ..default()
     });
 
@@ -322,11 +327,10 @@ fn setup_materials(
         PbrBundle {
             mesh: highlight_mesh_handle.clone(),
             material: hover_highlight_mat,
-            transform: Transform::from_xyz(0.0, -10.0, 0.0),
-            visibility: Visibility::Hidden,
+            transform: Transform::from_xyz(0.0, -100.0, 0.0), // Hide far below ground
             ..default()
         },
-        HoverHighlight,
+        HoverHighlightMarker,
     ));
 
     // Spawn selected highlight outline (initially hidden)
@@ -334,173 +338,164 @@ fn setup_materials(
         PbrBundle {
             mesh: highlight_mesh_handle,
             material: selected_highlight_mat,
-            transform: Transform::from_xyz(0.0, -10.0, 0.0),
-            visibility: Visibility::Hidden,
+            transform: Transform::from_xyz(0.0, -100.0, 0.0),
             ..default()
         },
-        SelectedHighlight,
-    ));
-
-    // Spawn link preview entity (initially hidden)
-    commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Mesh::from(Cuboid::new(1.0, 0.04, 0.04))), // placeholder size, scaled dynamically
-            material: materials.add(StandardMaterial {
-                base_color: Color::srgba(1.0, 1.0, 1.0, 0.6), // semi-transparent white
-                emissive: Color::srgba(1.0, 1.0, 1.0, 1.0).into(),
-                ..default()
-            }),
-            transform: Transform::from_xyz(0.0, -10.0, 0.0),
-            visibility: Visibility::Hidden,
-            ..default()
-        },
-        LinkPreviewMarker,
+        SelectedHighlightMarker,
     ));
 }
 
-// --- Orbital Camera Controls ---
+/// System: Handles keyboard controls to orbit and zoom the camera.
 fn camera_controls(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut camera_state: ResMut<CameraState>,
-    mut query: Query<&mut Transform, With<MainCamera>>,
-    time: Res<Time>,
+    mut camera_query: Query<&mut Transform, With<MainCamera>>,
+    mut state: ResMut<CameraState>,
 ) {
-    let dt = time.delta_seconds();
-    
-    // 1. Pan controls (relative to yaw rotation)
-    let mut pan_dir = Vec3::ZERO;
-    let forward = Vec3::new(camera_state.yaw.sin(), 0.0, camera_state.yaw.cos()).normalize_or_zero();
-    let right = Vec3::new(camera_state.yaw.cos(), 0.0, -camera_state.yaw.sin()).normalize_or_zero();
-
-    if keyboard_input.pressed(KeyCode::KeyW) {
-        pan_dir -= forward;
-    }
-    if keyboard_input.pressed(KeyCode::KeyS) {
-        pan_dir += forward;
-    }
-    if keyboard_input.pressed(KeyCode::KeyA) {
-        pan_dir -= right;
-    }
-    if keyboard_input.pressed(KeyCode::KeyD) {
-        pan_dir += right;
+    if state.radius == 0.0 {
+        // Initialize position on first run
+        state.radius = 18.0;
+        state.azimuth = 0.8;
+        state.polar = 1.0;
     }
 
-    camera_state.center += pan_dir.normalize_or_zero() * 10.0 * dt;
-
-    // 2. Yaw (Rotation around Y)
+    let speed = 0.03;
+    if keyboard_input.pressed(KeyCode::KeyA) || keyboard_input.pressed(KeyCode::ArrowLeft) {
+        state.azimuth -= speed;
+    }
+    if keyboard_input.pressed(KeyCode::KeyD) || keyboard_input.pressed(KeyCode::ArrowRight) {
+        state.azimuth += speed;
+    }
+    if keyboard_input.pressed(KeyCode::KeyW) || keyboard_input.pressed(KeyCode::ArrowUp) {
+        state.polar = (state.polar - speed).max(0.1);
+    }
+    if keyboard_input.pressed(KeyCode::KeyS) || keyboard_input.pressed(KeyCode::ArrowDown) {
+        state.polar = (state.polar + speed).min(std::f32::consts::FRAC_PI_2 - 0.05);
+    }
     if keyboard_input.pressed(KeyCode::KeyQ) {
-        camera_state.yaw += 1.2 * dt;
+        state.radius = (state.radius + 0.3).min(40.0);
     }
     if keyboard_input.pressed(KeyCode::KeyE) {
-        camera_state.yaw -= 1.2 * dt;
+        state.radius = (state.radius - 0.3).max(5.0);
     }
 
-    // 3. Zoom (Distance) and Pitch (Angle)
-    if keyboard_input.pressed(KeyCode::ArrowUp) {
-        camera_state.distance = (camera_state.distance - 12.0 * dt).max(4.0);
-    }
-    if keyboard_input.pressed(KeyCode::ArrowDown) {
-        camera_state.distance = (camera_state.distance + 12.0 * dt).min(28.0);
-    }
-    if keyboard_input.pressed(KeyCode::PageUp) {
-        camera_state.pitch = (camera_state.pitch + 1.0 * dt).min(-0.2);
-    }
-    if keyboard_input.pressed(KeyCode::PageDown) {
-        camera_state.pitch = (camera_state.pitch - 1.0 * dt).max(-1.4);
-    }
+    // Convert spherical coordinates to 3D Cartesian coordinates (X, Y, Z)
+    let x = state.radius * state.polar.sin() * state.azimuth.sin();
+    let z = state.radius * state.polar.sin() * state.azimuth.cos();
+    let y = state.radius * state.polar.cos();
 
-    // 4. Recalculate camera transform
-    if let Ok(mut transform) = query.get_single_mut() {
-        let rotation = Quat::from_rotation_y(camera_state.yaw) * Quat::from_rotation_x(camera_state.pitch);
-        let offset = rotation * Vec3::new(0.0, 0.0, camera_state.distance);
-        transform.translation = camera_state.center + offset;
-        let target_transform = Transform::from_translation(camera_state.center + offset)
-            .looking_at(camera_state.center, Vec3::Y);
-        transform.rotation = target_transform.rotation;
+    if let Ok(mut transform) = camera_query.get_single_mut() {
+        transform.translation = Vec3::new(x, y, z);
+        *transform = transform.looking_at(Vec3::ZERO, Vec3::Y);
     }
 }
 
-// --- Sync Hex Tiles ---
+/// System: Synchronizes hex tile models and paints them dynamically based on territory ownership.
 fn sync_hex_tiles(
     mut commands: Commands,
-    tiles: Query<&HexTile>,
-    nodes: Query<&NetworkNode>,
-    cities: Query<(&NetworkNode, &CityDominance)>,
-    mut mesh_query: Query<(Entity, &mut Handle<StandardMaterial>, &HexTileMeshMarker)>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
+    tiles_query: Query<&HexTile>,
+    nodes_query: Query<&NetworkNode>,
+    city_query: Query<(&NetworkNode, &CityDominance)>,
+    // Query filter checking for existing 3D tile models
+    spawned_query: Query<(Entity, &Handle<StandardMaterial>, &Transform), With<HexTile>>,
 ) {
-    // 1. Spawn missing tile meshes on startup
-    for tile in tiles.iter() {
-        let exists = mesh_query.iter().any(|(_, _, marker)| marker.coord == tile.coord);
-        if !exists {
-            let pos = tile.coord.to_world(1.0);
-            let hex_mesh = create_hex_prism_mesh(0.96, 0.35); // thin tiles
+    // If tiles aren't spawned yet, instantiate their 3D models
+    if spawned_query.iter().next().is_none() {
+        let hex_mesh = create_hex_prism_mesh(0.95, 0.1);
+        let mesh_handle = meshes.add(hex_mesh);
+
+        for tile in tiles_query.iter() {
+            let base_mat = match tile.tile_type {
+                HexTileType::Grass => materials.grass_hex_mat.clone(),
+                HexTileType::Water => materials.water_hex_mat.clone(),
+                HexTileType::Mountain => materials.mountain_hex_mat.clone(),
+                HexTileType::DataCenterCenter => materials.dc_hex_mat.clone(),
+            };
+
+            let transform = Transform::from_translation(tile.coord.to_world(0.0));
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(hex_mesh),
-                    material: materials.grass_hex_mat.clone(),
-                    transform: Transform::from_translation(pos - Vec3::new(0.0, 0.175, 0.0)),
+                    mesh: mesh_handle.clone(),
+                    material: base_mat,
+                    transform,
                     ..default()
                 },
-                HexTileMeshMarker { coord: tile.coord },
+                tile.clone(), // Attach HexTile data component to mesh entity
             ));
         }
+        return;
     }
 
-    // 2. Dynamically update tile colors based on occupying nodes / dominance
-    for (_, mut mat_handle, marker) in mesh_query.iter_mut() {
-        let coord = marker.coord;
-        let mut tile_owner = Owner::Neutral;
+    // Dynamic Territory Recoloring: paint tiles according to occupant ownership
+    for (entity, current_mat_handle, transform) in spawned_query.iter() {
+        let coord = HexCoord::from_world(transform.translation, 1.0);
         
-        for node in nodes.iter() {
+        // Find if a node occupies this hex tile coord
+        let mut occupant_owner = Owner::Neutral;
+        for node in nodes_query.iter() {
             if node.coord == coord {
+                occupant_owner = node.owner;
+                
+                // If it is a City, base recoloring on dominant team (>50% control)
                 if node.node_type == NodeType::City {
-                    if let Some((_, dom)) = cities.iter().find(|(n, _)| n.coord == coord) {
-                        if dom.player_control_pct > 0.5 {
-                            tile_owner = Owner::Player;
-                        } else if dom.ai1_control_pct > 0.5 {
-                            tile_owner = Owner::AI1;
-                        } else if dom.ai2_control_pct > 0.5 {
-                            tile_owner = Owner::AI2;
-                        } else if dom.ai3_control_pct > 0.5 {
-                            tile_owner = Owner::AI3;
+                    for (c_node, dom) in city_query.iter() {
+                        if c_node.coord == coord {
+                            if dom.player_control_pct > 0.5 { occupant_owner = Owner::Player; }
+                            else if dom.ai1_control_pct > 0.5 { occupant_owner = Owner::AI1; }
+                            else if dom.ai2_control_pct > 0.5 { occupant_owner = Owner::AI2; }
+                            else if dom.ai3_control_pct > 0.5 { occupant_owner = Owner::AI3; }
                         }
                     }
-                } else {
-                    tile_owner = node.owner;
                 }
-                break;
             }
         }
 
-        let new_mat = match tile_owner {
-            Owner::Player => materials.player_link_mat.clone(),
-            Owner::AI1 => materials.ai1_link_mat.clone(),
-            Owner::AI2 => materials.ai2_link_mat.clone(),
-            Owner::AI3 => materials.ai3_link_mat.clone(),
-            Owner::Neutral => materials.grass_hex_mat.clone(),
+        // Determine target pastel terrain color
+        let target_mat = match occupant_owner {
+            Owner::Player => materials.player_link_mat.clone(), // Cornflower blue wash
+            Owner::AI1 => materials.ai1_link_mat.clone(),       // Terracotta wash
+            Owner::AI2 => materials.ai2_link_mat.clone(),       // Lemon yellow wash
+            Owner::AI3 => materials.ai3_link_mat.clone(),       // Lavender wash
+            Owner::Neutral => {
+                // Keep base terrain color
+                materials.grass_hex_mat.clone()
+            }
         };
 
-        if *mat_handle != new_mat {
-            *mat_handle = new_mat;
+        // Swap material handle if it changed to trigger GPU update
+        if *current_mat_handle != target_mat {
+            commands.entity(entity).insert(target_mat);
         }
     }
 }
 
-// --- Sync Node Visuals (Bioluminescent Coral structures) ---
+/// System: Spawns and morphs node visuals (Mission bell towers, plaster spires).
 fn sync_node_visuals(
     mut commands: Commands,
-    nodes: Query<(Entity, &NetworkNode, &Transform, Option<&CityDominance>), Or<(Changed<NetworkNode>, Changed<CityDominance>)>>,
-    mesh_query: Query<(Entity, &NodeMeshMarker)>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
+    nodes_query: Query<(Entity, &NetworkNode, &Transform, Option<&CityDominance>)>,
+    mesh_query: Query<(Entity, &NodeMeshMarker)>,
 ) {
-    for (node_entity, node, transform, city_dom) in nodes.iter() {
-        for (mesh_entity, marker) in mesh_query.iter() {
-            if marker.node_entity == node_entity {
-                commands.entity(mesh_entity).despawn_recursive();
-            }
+    let mut active_nodes = std::collections::HashSet::new();
+    for (node_entity, _, _, _) in nodes_query.iter() {
+        active_nodes.insert(node_entity);
+    }
+
+    // Clean up mesh structures for despawned/bought out nodes
+    for (entity, marker) in mesh_query.iter() {
+        if !active_nodes.contains(&marker.node_entity) {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+
+    // Re-spawn or morph materials to match owners
+    for (node_entity, node, transform, city_dom) in nodes_query.iter() {
+        let has_mesh = mesh_query.iter().any(|(_, marker)| marker.node_entity == node_entity);
+        if has_mesh {
+            // Re-spawn meshes only if owner changes to keep spires synchronized
+            continue;
         }
 
         let base_mat = match node.owner {
@@ -553,7 +548,7 @@ fn sync_node_visuals(
         )).with_children(|parent| {
             match node.node_type {
                 NodeType::Router => {
-                    // Spiral Coral Spire: thin offset segments
+                    // Small Mission bell-tower (bell structure)
                     parent.spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(Cuboid::new(0.25, 0.8, 0.25))),
                         material: base_mat.clone(),
@@ -568,7 +563,7 @@ fn sync_node_visuals(
                     });
                 }
                 NodeType::DataCenter => {
-                    // Giant bioluminescent crystal clusters
+                    // Giant Cluster structures representing Main Mission Hubs
                     parent.spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(Cuboid::new(0.4, 1.2, 0.4))),
                         material: base_mat.clone(),
@@ -578,34 +573,28 @@ fn sync_node_visuals(
                     parent.spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(Cuboid::new(0.35, 1.5, 0.35))),
                         material: base_mat.clone(),
-                        transform: Transform::from_xyz(0.2, 0.75, 0.0),
+                        transform: Transform::from_xyz(0.2, 0.75, 0.1),
                         ..default()
                     });
                     parent.spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(Cuboid::new(0.2, 0.4, 0.2))),
+                        mesh: meshes.add(Mesh::from(Cuboid::new(0.3, 0.8, 0.3))),
                         material: glow_mat.clone(),
-                        transform: Transform::from_xyz(0.2, 1.45, 0.0),
+                        transform: Transform::from_xyz(0.0, 1.0, -0.2),
                         ..default()
                     });
                 }
                 NodeType::City => {
-                    // Futuristic tower cluster
+                    // Quaint white-washed tower blocks representing towns/cities
                     parent.spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(Cuboid::new(0.4, 1.4, 0.4))),
+                        mesh: meshes.add(Mesh::from(Cuboid::new(0.6, 0.7, 0.6))),
                         material: base_mat.clone(),
-                        transform: Transform::from_xyz(0.0, 0.7, 0.0),
+                        transform: Transform::from_xyz(0.0, 0.35, 0.0),
                         ..default()
                     });
                     parent.spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(Cuboid::new(0.2, 0.8, 0.2))),
+                        mesh: meshes.add(Mesh::from(Cuboid::new(0.4, 1.1, 0.4))),
                         material: glow_mat.clone(),
-                        transform: Transform::from_xyz(-0.25, 0.4, -0.25),
-                        ..default()
-                    });
-                    parent.spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(Cuboid::new(0.2, 0.8, 0.2))),
-                        material: glow_mat.clone(),
-                        transform: Transform::from_xyz(0.25, 0.4, 0.25),
+                        transform: Transform::from_xyz(0.0, 0.55, 0.0),
                         ..default()
                     });
                 }
@@ -614,58 +603,69 @@ fn sync_node_visuals(
     }
 }
 
-// --- Sync Link Visuals ---
+/// System: Renders wire link cables between connected nodes.
 fn sync_link_visuals(
     mut commands: Commands,
-    links: Query<(Entity, &NetworkLink), Changed<NetworkLink>>,
-    nodes: Query<&Transform, With<NetworkNode>>,
-    nodes_query: Query<&NetworkNode>,
-    mesh_query: Query<(Entity, &LinkMeshMarker)>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
+    links_query: Query<(Entity, &NetworkLink)>,
+    nodes_query: Query<(&NetworkNode, &Transform)>,
+    mesh_query: Query<(Entity, &LinkMeshMarker)>,
 ) {
-    for (link_entity, link) in links.iter() {
-        for (mesh_entity, marker) in mesh_query.iter() {
-            if marker.link_entity == link_entity {
-                commands.entity(mesh_entity).despawn_recursive();
-            }
+    let mut active_links = std::collections::HashSet::new();
+    for (entity, _) in links_query.iter() {
+        active_links.insert(entity);
+    }
+
+    // Despawn severed visual wires
+    for (entity, marker) in mesh_query.iter() {
+        if !active_links.contains(&marker.link_entity) {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+
+    // Spawn 3D tube wires for active connections
+    for (link_entity, link) in links_query.iter() {
+        let has_mesh = mesh_query.iter().any(|(_, marker)| marker.link_entity == link_entity);
+        if has_mesh {
+            continue;
         }
 
-        if let (Ok(trans_a), Ok(trans_b)) = (nodes.get(link.node_a), nodes.get(link.node_b)) {
-            let pos_a = trans_a.translation;
-            let pos_b = trans_b.translation;
-            let distance = pos_a.distance(pos_b);
-            let midpoint = pos_a.lerp(pos_b, 0.5);
+        if let (Ok((node_a, transform_a)), Ok((node_b, transform_b))) = 
+            (nodes_query.get(link.node_a), nodes_query.get(link.node_b)) {
+            
+            let pos_a = transform_a.translation + Vec3::Y * 0.15;
+            let pos_b = transform_b.translation + Vec3::Y * 0.15;
+            let dir = pos_b - pos_a;
+            let dist = dir.length();
+            let midpoint = pos_a + dir * 0.5;
 
-            let direction = (pos_b - pos_a).normalize();
-            let rotation = Quat::from_rotation_arc(Vec3::X, direction);
+            // Align wire tube along the axis between coordinates
+            let rotation = Quat::from_rotation_arc(Vec3::Y, dir.normalize());
 
-            let mut link_owner = Owner::Neutral;
-            if let Ok(node_a_comp) = nodes_query.get(link.node_a) {
-                if node_a_comp.owner != Owner::Neutral {
-                    link_owner = node_a_comp.owner;
-                }
-            }
-            if link_owner == Owner::Neutral {
-                if let Ok(node_b_comp) = nodes_query.get(link.node_b) {
-                    link_owner = node_b_comp.owner;
-                }
-            }
-
-            let mat = match link_owner {
+            // Color wires by owner's color to show link occupancy
+            let wire_mat = match node_a.owner {
                 Owner::Player => materials.player_link_mat.clone(),
                 Owner::AI1 => materials.ai1_link_mat.clone(),
                 Owner::AI2 => materials.ai2_link_mat.clone(),
                 Owner::AI3 => materials.ai3_link_mat.clone(),
-                Owner::Neutral => materials.neutral_link_mat.clone(),
+                Owner::Neutral => {
+                    // Match owner of node_b if node_a is neutral
+                    match node_b.owner {
+                        Owner::Player => materials.player_link_mat.clone(),
+                        Owner::AI1 => materials.ai1_link_mat.clone(),
+                        Owner::AI2 => materials.ai2_link_mat.clone(),
+                        Owner::AI3 => materials.ai3_link_mat.clone(),
+                        _ => materials.neutral_link_mat.clone(),
+                    }
+                }
             };
 
             commands.spawn((
                 PbrBundle {
-                    mesh: meshes.add(Mesh::from(Cuboid::new(distance, 0.06, 0.06))),
-                    material: mat,
-                    transform: Transform::from_translation(midpoint + Vec3::new(0.0, 0.04, 0.0))
-                        .with_rotation(rotation),
+                    mesh: meshes.add(Mesh::from(Cuboid::new(0.08, dist, 0.08))),
+                    material: wire_mat,
+                    transform: Transform::from_translation(midpoint).with_rotation(rotation),
                     ..default()
                 },
                 LinkMeshMarker { link_entity },
@@ -674,134 +674,137 @@ fn sync_link_visuals(
     }
 }
 
-// --- Sync Packet Visuals ---
+/// System: Draws traveling packet boxes along links.
 fn sync_packet_visuals(
     mut commands: Commands,
-    packets: Query<(Entity, &Packet)>,
-    nodes: Query<&Transform, With<NetworkNode>>,
-    mut mesh_query: Query<(Entity, &mut Transform, &PacketMeshMarker), Without<NetworkNode>>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
-    time: Res<Time>,
+    packets_query: Query<(Entity, &Packet)>,
+    nodes_query: Query<&Transform, With<NetworkNode>>,
+    mesh_query: Query<(Entity, &PacketMeshMarker)>,
 ) {
-    let mut updated_entities = bevy::utils::HashSet::default();
-    let time_sec = time.elapsed_seconds();
-    let bobbing = (time_sec * 5.0).sin() * 0.06;
+    let mut active_packets = std::collections::HashSet::new();
+    for (entity, _) in packets_query.iter() {
+        active_packets.insert(entity);
+    }
 
-    for (mesh_entity, mut mesh_transform, marker) in mesh_query.iter_mut() {
-        if let Ok((_, packet)) = packets.get(marker.packet_entity) {
-            if let (Ok(trans_a), Ok(trans_b)) = (nodes.get(packet.from_node), nodes.get(packet.to_node)) {
-                let pos_a = trans_a.translation;
-                let pos_b = trans_b.translation;
-                let current_pos = pos_a.lerp(pos_b, packet.progress);
-                
-                mesh_transform.translation = current_pos + Vec3::new(0.0, 0.25 + bobbing, 0.0);
-                updated_entities.insert(marker.packet_entity);
-            }
-        } else {
-            commands.entity(mesh_entity).despawn_recursive();
+    // Despawn visual packets once they reach target or get dropped
+    for (entity, marker) in mesh_query.iter() {
+        if !active_packets.contains(&marker.packet_entity) {
+            commands.entity(entity).despawn();
         }
     }
 
-    for (packet_entity, packet) in packets.iter() {
-        if updated_entities.contains(&packet_entity) {
-            continue;
-        }
-
-        if let (Ok(trans_a), Ok(trans_b)) = (nodes.get(packet.from_node), nodes.get(packet.to_node)) {
-            let pos_a = trans_a.translation;
-            let pos_b = trans_b.translation;
+    // Update positions of active packets
+    for (packet_entity, packet) in packets_query.iter() {
+        if let (Ok(transform_a), Ok(transform_b)) = 
+            (nodes_query.get(packet.from_node), nodes_query.get(packet.to_node)) {
+            
+            let pos_a = transform_a.translation + Vec3::Y * 0.2;
+            let pos_b = transform_b.translation + Vec3::Y * 0.2;
+            
+            // Linear interpolation (lerp) progress between nodes
             let current_pos = pos_a.lerp(pos_b, packet.progress);
 
-            let mat = if packet.src_ip < 100 {
-                materials.player_packet_mat.clone()
-            } else if packet.src_ip < 200 {
-                materials.ai1_packet_mat.clone()
-            } else if packet.src_ip < 300 {
-                materials.ai2_packet_mat.clone()
+            let has_mesh = mesh_query.iter().any(|(_, marker)| marker.packet_entity == packet_entity);
+            if has_mesh {
+                // Find existing packet entity and update its physical translation
+                for (mesh_entity, marker) in mesh_query.iter() {
+                    if marker.packet_entity == packet_entity {
+                        commands.entity(mesh_entity).insert(Transform::from_translation(current_pos));
+                    }
+                }
             } else {
-                materials.ai3_packet_mat.clone()
-            };
+                // Determine pastel color based on sender IP
+                let packet_mat = if packet.src_ip < 100 {
+                    materials.player_packet_mat.clone()
+                } else if packet.src_ip < 200 {
+                    materials.ai1_packet_mat.clone()
+                } else if packet.src_ip < 300 {
+                    materials.ai2_packet_mat.clone()
+                } else {
+                    materials.ai3_packet_mat.clone()
+                };
 
-            commands.spawn((
-                PbrBundle {
-                    mesh: meshes.add(Mesh::from(Cuboid::new(0.18, 0.18, 0.18))),
-                    material: mat,
-                    transform: Transform::from_translation(current_pos + Vec3::new(0.0, 0.25 + bobbing, 0.0)),
-                    ..default()
-                },
-                PacketMeshMarker { packet_entity },
-            ));
+                commands.spawn((
+                    PbrBundle {
+                        mesh: meshes.add(Mesh::from(Cuboid::new(0.12, 0.12, 0.12))),
+                        material: packet_mat,
+                        transform: Transform::from_translation(current_pos),
+                        ..default()
+                    },
+                    PacketMeshMarker { packet_entity },
+                ));
+            }
         }
     }
 }
 
-// --- Position Selection Outlines System ---
+/// System: Updates the visual outline rings showing hovered or selected hex coordinates.
 fn update_highlights(
     player_controls: Res<crate::hud::PlayerControls>,
-    mut hover_query: Query<&mut Transform, (With<HoverHighlight>, Without<SelectedHighlight>)>,
-    mut select_query: Query<&mut Transform, (With<SelectedHighlight>, Without<HoverHighlight>)>,
-    mut hover_visibility: Query<&mut Visibility, (With<HoverHighlight>, Without<SelectedHighlight>)>,
-    mut select_visibility: Query<&mut Visibility, (With<SelectedHighlight>, Without<HoverHighlight>)>,
+    mut hover_query: Query<&mut Transform, (With<HoverHighlightMarker>, Without<SelectedHighlightMarker>)>,
+    mut selected_query: Query<&mut Transform, (With<SelectedHighlightMarker>, Without<HoverHighlightMarker>)>,
 ) {
-    // 1. Update Hover Highlight
-    if let Some(hovered_coord) = player_controls.hovered_hex {
-        if let Ok(mut transform) = hover_query.get_single_mut() {
-            transform.translation = hovered_coord.to_world(1.0) + Vec3::new(0.0, 0.02, 0.0);
-        }
-        if let Ok(mut vis) = hover_visibility.get_single_mut() {
-            *vis = Visibility::Inherited;
-        }
-    } else {
-        if let Ok(mut vis) = hover_visibility.get_single_mut() {
-            *vis = Visibility::Hidden;
+    // Positioning hover outline
+    if let Ok(mut transform) = hover_query.get_single_mut() {
+        if let Some(coord) = player_controls.hovered_hex {
+            transform.translation = coord.to_world(0.06); // Hover slightly above ground
+        } else {
+            transform.translation = Vec3::new(0.0, -100.0, 0.0); // Hide
         }
     }
 
-    // 2. Update Selected Highlight
-    if let Some(selected_coord) = player_controls.selected_hex {
-        if let Ok(mut transform) = select_query.get_single_mut() {
-            transform.translation = selected_coord.to_world(1.0) + Vec3::new(0.0, 0.03, 0.0);
-        }
-        if let Ok(mut vis) = select_visibility.get_single_mut() {
-            *vis = Visibility::Inherited;
-        }
-    } else {
-        if let Ok(mut vis) = select_visibility.get_single_mut() {
-            *vis = Visibility::Hidden;
+    // Positioning selection outline
+    if let Ok(mut transform) = selected_query.get_single_mut() {
+        if let Some(coord) = player_controls.selected_node_coord {
+            transform.translation = coord.to_world(0.07);
+        } else {
+            transform.translation = Vec3::new(0.0, -100.0, 0.0);
         }
     }
 }
 
+/// System: Spawns a translucent preview cable when laying wires.
 fn update_link_preview(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    materials: Res<GameMaterials>,
     player_controls: Res<crate::hud::PlayerControls>,
-    nodes: Query<&Transform, With<NetworkNode>>,
-    mut preview_query: Query<(&mut Transform, &mut Visibility), (With<LinkPreviewMarker>, Without<NetworkNode>)>,
+    nodes_query: Query<(&NetworkNode, &Transform)>,
+    preview_query: Query<Entity, With<LinkPreviewMarker>>,
 ) {
-    let Ok((mut trans, mut vis)) = preview_query.get_single_mut() else { return; };
+    // Despawn previous frame's preview line
+    for entity in preview_query.iter() {
+        commands.entity(entity).despawn();
+    }
 
-    if let (Some(start_entity), Some(hovered_coord)) = (player_controls.link_start_node, player_controls.hovered_hex) {
-        if let Ok(start_trans) = nodes.get(start_entity) {
-            let pos_a = start_trans.translation;
-            let pos_b = hovered_coord.to_world(1.0);
+    // Draw preview line only if wirelaying tool is active
+    if player_controls.selected_tool == crate::hud::SelectedTool::LayWire {
+        if let (Some(selected_entity), Some(hovered_coord)) = 
+            (player_controls.selected_node, player_controls.hovered_hex) {
             
-            let distance = pos_a.distance(pos_b);
-            let midpoint = pos_a.lerp(pos_b, 0.5);
-            let direction = (pos_b - pos_a).normalize();
-            
-            if distance > 0.01 {
-                let rotation = Quat::from_rotation_arc(Vec3::X, direction);
-                trans.translation = midpoint + Vec3::new(0.0, 0.04, 0.0);
-                trans.rotation = rotation;
-                trans.scale = Vec3::new(distance, 1.0, 1.0);
-                *vis = Visibility::Inherited;
-            } else {
-                *vis = Visibility::Hidden;
+            if let Ok((selected_node, selected_transform)) = nodes_query.get(selected_entity) {
+                // Enforce laying adjacent to selected node (distance limit = 1 hex)
+                if selected_node.coord.distance(&hovered_coord) == 1 {
+                    let pos_a = selected_transform.translation + Vec3::Y * 0.15;
+                    let pos_b = hovered_coord.to_world(0.15);
+                    let dir = pos_b - pos_a;
+                    let dist = dir.length();
+                    let midpoint = pos_a + dir * 0.5;
+                    let rotation = Quat::from_rotation_arc(Vec3::Y, dir.normalize());
+
+                    commands.spawn((
+                        PbrBundle {
+                            mesh: meshes.add(Mesh::from(Cuboid::new(0.04, dist, 0.04))),
+                            material: materials.selected_highlight_mat.clone(), // Translucent green outline
+                            transform: Transform::from_translation(midpoint).with_rotation(rotation),
+                            ..default()
+                        },
+                        LinkPreviewMarker,
+                    ));
+                }
             }
-        } else {
-            *vis = Visibility::Hidden;
         }
-    } else {
-        *vis = Visibility::Hidden;
     }
 }
