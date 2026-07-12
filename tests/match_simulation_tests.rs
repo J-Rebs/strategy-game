@@ -343,3 +343,57 @@ fn test_multiteam_buyout_elimination() {
     let p_node_comp = app.world().get::<NetworkNode>(player_node).unwrap();
     assert_eq!(p_node_comp.owner, Owner::Player);
 }
+
+#[test]
+fn test_buyout_lock_and_timing() {
+    let mut app = setup_test_app();
+    app.add_plugins(strategy_game::ai::AiPlugin);
+
+    // Spawn Player DC (10) and AI1 DC (100)
+    let _player_dc = app.world_mut().spawn((
+        NetworkNode {
+            ip: 10,
+            coord: HexCoord::new(-3, 0),
+            node_type: NodeType::DataCenter,
+            owner: Owner::Player,
+        },
+        strategy_game::simulation::RoutingTable::default(),
+    )).id();
+
+    let _ai1_dc = app.world_mut().spawn((
+        NetworkNode {
+            ip: 100,
+            coord: HexCoord::new(3, -3),
+            node_type: NodeType::DataCenter,
+            owner: Owner::AI1,
+        },
+        strategy_game::simulation::RoutingTable::default(),
+    )).id();
+
+    // 1. At tick 0: AI1 has 1000 BW (enough to buy out player) but buyout is locked
+    {
+        let mut res = app.world_mut().resource_mut::<GameResources>();
+        res.ai1_bandwidth = 1000.0;
+        res.game_tick = 0;
+    }
+
+    // Run update (ticks OSPF and AI)
+    app.update();
+
+    // Player should NOT be eliminated because buyout is locked in the first 5 minutes (tick 0 < 18000)
+    let res = app.world().resource::<GameResources>();
+    assert!(!res.player_eliminated);
+
+    // 2. Set game tick to 18000 (unlocks buyout)
+    {
+        let mut res = app.world_mut().resource_mut::<GameResources>();
+        res.game_tick = 18000;
+    }
+
+    // Run update (AI checks and executes buyout)
+    app.update();
+
+    // Player should now be eliminated because buyout lock is lifted!
+    let res = app.world().resource::<GameResources>();
+    assert!(res.player_eliminated);
+}

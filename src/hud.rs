@@ -45,22 +45,22 @@ fn draw_hud(
 ) {
     let ctx = contexts.ctx_mut();
 
-    // Undersea dark glassmorphism theme using color theory (Complementary Teal & Coral Gold)
-    let mut visuals = egui::Visuals::dark();
-    visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgba_premultiplied(8, 28, 40, 240);
+    // Light beachside glassmorphism theme (Cornflower, Lemon, Terracotta, Sage)
+    let mut visuals = egui::Visuals::light();
+    visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgba_premultiplied(240, 245, 248, 240);
     visuals.widgets.noninteractive.rounding = egui::Rounding::same(8.0);
-    visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(0, 180, 220));
+    visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.2_f32, egui::Color32::from_rgb(100, 160, 190));
 
-    visuals.widgets.inactive.bg_fill = egui::Color32::from_rgba_premultiplied(15, 48, 68, 200);
-    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(180, 240, 255));
+    visuals.widgets.inactive.bg_fill = egui::Color32::from_rgba_premultiplied(225, 235, 242, 200);
+    visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(70, 110, 145));
     visuals.widgets.inactive.rounding = egui::Rounding::same(6.0);
 
-    visuals.widgets.hovered.bg_fill = egui::Color32::from_rgba_premultiplied(0, 180, 220, 255);
-    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.5_f32, egui::Color32::WHITE);
+    visuals.widgets.hovered.bg_fill = egui::Color32::from_rgba_premultiplied(253, 242, 200, 255);
+    visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(175, 135, 45));
     visuals.widgets.hovered.rounding = egui::Rounding::same(6.0);
 
-    visuals.widgets.active.bg_fill = egui::Color32::from_rgba_premultiplied(255, 184, 92, 255);
-    visuals.widgets.active.fg_stroke = egui::Stroke::new(2.0_f32, egui::Color32::BLACK);
+    visuals.widgets.active.bg_fill = egui::Color32::from_rgba_premultiplied(238, 185, 165, 255);
+    visuals.widgets.active.fg_stroke = egui::Stroke::new(2.0_f32, egui::Color32::from_rgb(145, 75, 55));
     visuals.widgets.active.rounding = egui::Rounding::same(6.0);
 
     ctx.set_visuals(visuals);
@@ -313,22 +313,28 @@ fn draw_hud(
                     let target_owner = node.owner;
                     let cost = crate::simulation::get_buyout_cost(target_owner, &cities_query);
                     ui.separator();
-                    ui.colored_label(egui::Color32::from_rgb(255, 215, 0), "🏢 Target Main Data Center");
+                    ui.colored_label(egui::Color32::from_rgb(200, 140, 40), "🏢 Target Main Data Center");
                     ui.label(format!("Buyout Cost: {:.1} BW", cost));
                     
-                    let can_afford = game_resources.player_bandwidth >= cost;
-                    if can_afford {
-                        if ui.button(format!("🛒 Buy Out {:?}", target_owner)).clicked() {
-                            game_resources.player_bandwidth -= cost;
-                            match target_owner {
-                                Owner::AI1 => game_resources.ai1_eliminated = true,
-                                Owner::AI2 => game_resources.ai2_eliminated = true,
-                                Owner::AI3 => game_resources.ai3_eliminated = true,
-                                _ => {}
-                            }
-                        }
+                    let tick = game_resources.game_tick;
+                    if tick < crate::simulation::BUYOUT_LOCK_TICKS {
+                        let remaining_secs = ((crate::simulation::BUYOUT_LOCK_TICKS - tick) as f32 / 60.0).max(0.0);
+                        ui.colored_label(egui::Color32::from_rgb(200, 90, 40), format!("🔒 Locked for first 5 mins ({:.1}s remaining)", remaining_secs));
                     } else {
-                        ui.colored_label(egui::Color32::from_rgb(255, 90, 90), "⚠️ Cannot Afford Buyout");
+                        let can_afford = game_resources.player_bandwidth >= cost;
+                        if can_afford {
+                            if ui.button(format!("🛒 Buy Out {:?}", target_owner)).clicked() {
+                                game_resources.player_bandwidth -= cost;
+                                match target_owner {
+                                    Owner::AI1 => game_resources.ai1_eliminated = true,
+                                    Owner::AI2 => game_resources.ai2_eliminated = true,
+                                    Owner::AI3 => game_resources.ai3_eliminated = true,
+                                    _ => {}
+                                }
+                            }
+                        } else {
+                            ui.colored_label(egui::Color32::from_rgb(220, 70, 70), "⚠️ Cannot Afford Buyout");
+                        }
                     }
                 }
 

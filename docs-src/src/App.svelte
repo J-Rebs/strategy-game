@@ -406,15 +406,16 @@ fn round(q: f32, r: f32) -> HexCoord {
 <style>
   /* Local stylesheet overrides and styling hooks */
   :global(:root) {
-    --bg-dark: #F0F7F7;
-    --bg-panel: rgba(255, 255, 255, 0.85);
-    --border-color: rgba(159, 211, 211, 0.5);
-    --border-glow: rgba(159, 211, 211, 0.9);
-    --aqua: #7FB8B8;
-    --coral-gold: #E1A140;
-    --text-primary: #34495E;
-    --text-secondary: #5D6D7E;
-    --code-bg: #EAEFF2;
+    --bg-dark: #F3F8FA;
+    --bg-panel: rgba(255, 255, 255, 0.9);
+    --border-color: rgba(120, 175, 200, 0.4);
+    --border-glow: rgba(120, 175, 200, 0.8);
+    --aqua: #609DC0; /* Cornflower Sea Blue */
+    --coral-gold: #E58E73; /* Terracotta Clay */
+    --lemon: #F4D56A; /* Buttercup Yellow */
+    --text-primary: #2C3E50;
+    --text-secondary: #62727A;
+    --code-bg: #EEF4F6;
   }
 
   :global(body) {

@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use bevy::utils::HashMap;
 use crate::hex::HexCoord;
 
+pub const BUYOUT_LOCK_TICKS: u64 = 18000; // 5 minutes at 60 FPS
+
 // --- Owners ---
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, serde::Serialize, serde::Deserialize)]
 pub enum Owner {

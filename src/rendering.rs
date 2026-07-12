@@ -99,8 +99,8 @@ pub struct RenderingPlugin;
 impl Plugin for RenderingPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(CameraState::default())
-            // ClearColor: Dark Cyber Space Black
-            .insert_resource(ClearColor(Color::srgba(0.01, 0.02, 0.04, 1.0)))
+            // ClearColor: Happy Sea Mist Sky Blue
+            .insert_resource(ClearColor(Color::srgba(0.88, 0.94, 0.96, 1.0)))
             .add_systems(Startup, (setup_camera_and_lights, setup_materials).chain())
             .add_systems(Update, (
                 camera_controls,
@@ -128,18 +128,18 @@ fn setup_camera_and_lights(mut commands: Commands) {
         MainCamera,
     ));
 
-    // Dark cyber-space ambient light
+    // Warm, sunny seaside ambient light
     commands.insert_resource(AmbientLight {
-        color: Color::srgba(0.05, 0.08, 0.15, 1.0),
-        brightness: 200.0,
+        color: Color::srgba(1.0, 0.97, 0.92, 1.0),
+        brightness: 800.0,
     });
 
-    // Directional cyber sunbeams
+    // Intense golden summer sunbeams casting beautiful shadows
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             shadows_enabled: true,
-            illuminance: 3500.0,
-            color: Color::srgba(0.7, 0.85, 1.0, 1.0),
+            illuminance: 9000.0,
+            color: Color::srgba(1.0, 0.95, 0.88, 1.0),
             ..default()
         },
         transform: Transform::from_xyz(10.0, 20.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
@@ -153,138 +153,133 @@ fn setup_materials(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Tile Bases: Sleek Cyber Metal/Grid base
+    // Grid terrain bases: Quaint coastal maps & sage hills
     let grass_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.08, 0.1, 0.15, 1.0), // Dark obsidian blue
+        base_color: Color::srgba(0.65, 0.78, 0.65, 1.0), // Happy sage hill green
         perceptual_roughness: 0.9,
         ..default()
     });
     let water_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.03, 0.05, 0.08, 1.0), // Even darker blue
-        perceptual_roughness: 0.4,
+        base_color: Color::srgba(0.55, 0.78, 0.85, 1.0), // Sparkling seaside aquamarine blue
+        perceptual_roughness: 0.3,
         ..default()
     });
     let mountain_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.12, 0.15, 0.22, 1.0), // Elevated plateaus
+        base_color: Color::srgba(0.88, 0.76, 0.68, 1.0), // Soft warm clay mountain ridge
         perceptual_roughness: 0.8,
         ..default()
     });
     let dc_hex_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.05, 0.2, 0.3, 1.0),
+        base_color: Color::srgba(0.92, 0.86, 0.75, 1.0), // Soft warm beach sand
         perceptual_roughness: 0.5,
         ..default()
     });
 
-    // Player and AI Node Bases (Neon Cyber Spire Bases)
+    // Node bases (Quaint plaster towers/bell-towers)
     let player_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 0.3, 0.4, 1.0),
+        base_color: Color::srgba(0.35, 0.55, 0.75, 1.0), // Coastal blue base
         perceptual_roughness: 0.5,
         ..default()
     });
     let ai1_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.4, 0.05, 0.1, 1.0),
+        base_color: Color::srgba(0.65, 0.35, 0.28, 1.0), // Terracotta clay base
         perceptual_roughness: 0.5,
         ..default()
     });
     let ai2_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.05, 0.4, 0.05, 1.0),
+        base_color: Color::srgba(0.75, 0.65, 0.3, 1.0), // Sunny ochre base
         perceptual_roughness: 0.5,
         ..default()
     });
     let ai3_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.35, 0.05, 0.35, 1.0),
+        base_color: Color::srgba(0.55, 0.48, 0.68, 1.0), // Soft lavender base
         perceptual_roughness: 0.5,
         ..default()
     });
     let neutral_node_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.2, 0.22, 0.25, 1.0), // Neutral slate metal
+        base_color: Color::srgba(0.85, 0.83, 0.78, 1.0), // Stucco plaster white
         perceptual_roughness: 0.7,
         ..default()
     });
 
-    // Neon Glow overlays
+    // Spire tops (Accent pastel lighthouses & mission tiles)
     let player_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 0.9, 1.0, 1.0),
-        emissive: Color::srgba(0.0, 0.9, 1.0, 1.0).into(),
+        base_color: Color::srgba(0.55, 0.75, 0.9, 1.0), // Cornflower blue top
+        perceptual_roughness: 0.6,
         ..default()
     });
     let ai1_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.1, 0.3, 1.0),
-        emissive: Color::srgba(1.0, 0.1, 0.3, 1.0).into(),
+        base_color: Color::srgba(0.85, 0.55, 0.45, 1.0), // Warm terracotta top
+        perceptual_roughness: 0.6,
         ..default()
     });
     let ai2_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.2, 1.0, 0.2, 1.0),
-        emissive: Color::srgba(0.2, 1.0, 0.2, 1.0).into(),
+        base_color: Color::srgba(0.95, 0.88, 0.52, 1.0), // Buttercup yellow top
+        perceptual_roughness: 0.6,
         ..default()
     });
     let ai3_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.9, 0.2, 0.9, 1.0),
-        emissive: Color::srgba(0.9, 0.2, 0.9, 1.0).into(),
+        base_color: Color::srgba(0.75, 0.68, 0.85, 1.0), // Lilac top
+        perceptual_roughness: 0.6,
         ..default()
     });
     let neutral_node_glow_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.5, 0.55, 0.6, 1.0),
-        emissive: Color::srgba(0.2, 0.22, 0.25, 1.0).into(),
+        base_color: Color::srgba(0.95, 0.93, 0.9, 1.0),
+        perceptual_roughness: 0.8,
         ..default()
     });
 
-    // Links (Glowing circuits)
+    // Links (Symmetric painted paths / cable routes)
     let player_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 0.8, 1.0, 0.6),
-        emissive: Color::srgba(0.0, 0.6, 0.8, 1.0).into(),
+        base_color: Color::srgba(0.5, 0.72, 0.9, 0.8), // Soft sky blue cable
+        perceptual_roughness: 0.7,
         ..default()
     });
     let ai1_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.1, 0.3, 0.6),
-        emissive: Color::srgba(0.8, 0.05, 0.2, 1.0).into(),
+        base_color: Color::srgba(0.85, 0.45, 0.35, 0.8), // Soft terracotta cable
+        perceptual_roughness: 0.7,
         ..default()
     });
     let ai2_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.2, 1.0, 0.2, 0.6),
-        emissive: Color::srgba(0.1, 0.8, 0.1, 1.0).into(),
+        base_color: Color::srgba(0.95, 0.85, 0.45, 0.8), // Soft golden yellow cable
+        perceptual_roughness: 0.7,
         ..default()
     });
     let ai3_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.9, 0.2, 0.9, 0.6),
-        emissive: Color::srgba(0.7, 0.1, 0.7, 1.0).into(),
+        base_color: Color::srgba(0.72, 0.65, 0.85, 0.8), // Soft lilac purple cable
+        perceptual_roughness: 0.7,
         ..default()
     });
     let neutral_link_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.2, 0.25, 0.3, 0.3),
+        base_color: Color::srgba(0.78, 0.75, 0.7, 0.4), // Earthy hemp rope
+        perceptual_roughness: 0.9,
         ..default()
     });
 
-    // Packets
+    // Packets (Happy visual boxes traveling)
     let player_packet_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 1.0, 1.0, 1.0),
-        emissive: Color::srgba(0.0, 1.0, 1.0, 1.0).into(),
+        base_color: Color::srgba(0.6, 0.8, 0.95, 1.0),
         ..default()
     });
     let ai1_packet_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.1, 0.3, 1.0),
-        emissive: Color::srgba(1.0, 0.1, 0.3, 1.0).into(),
+        base_color: Color::srgba(0.9, 0.65, 0.58, 1.0),
         ..default()
     });
     let ai2_packet_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.2, 1.0, 0.2, 1.0),
-        emissive: Color::srgba(0.2, 1.0, 0.2, 1.0).into(),
+        base_color: Color::srgba(0.98, 0.92, 0.68, 1.0),
         ..default()
     });
     let ai3_packet_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.9, 0.2, 0.9, 1.0),
-        emissive: Color::srgba(0.9, 0.2, 0.9, 1.0).into(),
+        base_color: Color::srgba(0.85, 0.8, 0.92, 1.0),
         ..default()
     });
 
     let hover_highlight_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(1.0, 0.9, 0.0, 0.4), // Glowing yellow highlight ring
-        emissive: Color::srgba(1.0, 0.9, 0.0, 1.0).into(),
+        base_color: Color::srgba(1.0, 0.95, 0.6, 0.5), // Sunlit yellow ring
         ..default()
     });
     let selected_highlight_mat = materials.add(StandardMaterial {
-        base_color: Color::srgba(0.0, 1.0, 0.5, 0.5), // Glowing cyan-green emerald ring
-        emissive: Color::srgba(0.0, 1.0, 0.5, 1.0).into(),
+        base_color: Color::srgba(0.5, 0.85, 0.7, 0.6), // Sea glass green ring
         ..default()
     });
 

@@ -49,49 +49,51 @@ fn ai_decision_loop(
             _ => 0.0,
         };
 
-        // 1. BUYOUT: Check if we can buy out any other active player
-        let mut target_to_buyout = None;
-        let mut min_buyout_cost = f32::MAX;
-        
-        let mut target_teams = vec![Owner::Player, Owner::AI1, Owner::AI2, Owner::AI3];
-        target_teams.retain(|&t| t != current_ai);
-        
-        for target in target_teams {
-            let target_eliminated = match target {
-                Owner::Player => game_resources.player_eliminated,
-                Owner::AI1 => game_resources.ai1_eliminated,
-                Owner::AI2 => game_resources.ai2_eliminated,
-                Owner::AI3 => game_resources.ai3_eliminated,
-                Owner::Neutral => true,
-            };
-            if target_eliminated {
-                continue;
-            }
+        // 1. BUYOUT: Check if we can buy out any other active player (only after 5 minutes)
+        if tick >= crate::simulation::BUYOUT_LOCK_TICKS {
+            let mut target_to_buyout = None;
+            let mut min_buyout_cost = f32::MAX;
             
-            let cost = crate::simulation::get_buyout_cost(target, &cities_query);
-            if cost < min_buyout_cost {
-                min_buyout_cost = cost;
-                target_to_buyout = Some(target);
+            let mut target_teams = vec![Owner::Player, Owner::AI1, Owner::AI2, Owner::AI3];
+            target_teams.retain(|&t| t != current_ai);
+            
+            for target in target_teams {
+                let target_eliminated = match target {
+                    Owner::Player => game_resources.player_eliminated,
+                    Owner::AI1 => game_resources.ai1_eliminated,
+                    Owner::AI2 => game_resources.ai2_eliminated,
+                    Owner::AI3 => game_resources.ai3_eliminated,
+                    Owner::Neutral => true,
+                };
+                if target_eliminated {
+                    continue;
+                }
+                
+                let cost = crate::simulation::get_buyout_cost(target, &cities_query);
+                if cost < min_buyout_cost {
+                    min_buyout_cost = cost;
+                    target_to_buyout = Some(target);
+                }
             }
-        }
 
-        if let Some(target) = target_to_buyout {
-            if current_bw >= min_buyout_cost {
-                // Execute buyout!
-                match current_ai {
-                    Owner::AI1 => game_resources.ai1_bandwidth -= min_buyout_cost,
-                    Owner::AI2 => game_resources.ai2_bandwidth -= min_buyout_cost,
-                    Owner::AI3 => game_resources.ai3_bandwidth -= min_buyout_cost,
-                    _ => {}
+            if let Some(target) = target_to_buyout {
+                if current_bw >= min_buyout_cost {
+                    // Execute buyout!
+                    match current_ai {
+                        Owner::AI1 => game_resources.ai1_bandwidth -= min_buyout_cost,
+                        Owner::AI2 => game_resources.ai2_bandwidth -= min_buyout_cost,
+                        Owner::AI3 => game_resources.ai3_bandwidth -= min_buyout_cost,
+                        _ => {}
+                    }
+                    match target {
+                        Owner::Player => game_resources.player_eliminated = true,
+                        Owner::AI1 => game_resources.ai1_eliminated = true,
+                        Owner::AI2 => game_resources.ai2_eliminated = true,
+                        Owner::AI3 => game_resources.ai3_eliminated = true,
+                        _ => {}
+                    }
+                    continue; // Consumed action for this team this cycle
                 }
-                match target {
-                    Owner::Player => game_resources.player_eliminated = true,
-                    Owner::AI1 => game_resources.ai1_eliminated = true,
-                    Owner::AI2 => game_resources.ai2_eliminated = true,
-                    Owner::AI3 => game_resources.ai3_eliminated = true,
-                    _ => {}
-                }
-                continue; // Consumed action for this team this cycle
             }
         }
 
