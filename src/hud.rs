@@ -41,7 +41,7 @@ impl Plugin for HudPlugin {
         app.init_resource::<PlayerControls>()
             .register_type::<SelectedTool>()
             .register_type::<PlayerControls>()
-            .add_systems(Update, (draw_hud, handle_mouse_picking));
+            .add_systems(Update, (draw_hud, handle_mouse_picking).after(bevy_egui::EguiSet::InitContexts));
     }
 }
 

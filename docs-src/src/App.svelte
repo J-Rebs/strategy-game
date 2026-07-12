@@ -144,7 +144,7 @@ fn round(q: f32, r: f32) -> HexCoord {
     {#if activeTab === 'intro'}
       <section class="doc-section">
         <h2>Introduction</h2>
-        <p class="subtitle">Undersea Network Strategy Game Architecture</p>
+        <p class="subtitle">Network Strategy Game Architecture</p>
         
         <!-- Custom Pastel WIP Notice Warning Panel (No emojis) -->
         <div class="card warning-card">
