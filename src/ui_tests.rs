@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use bevy::prelude::*;
-    use std::collections::VecDeque;
     use crate::hex::{HexCoord, HexTile, HexTileType};
     use crate::simulation::{NetworkNode, NetworkLink, RoutingTable, NodeType, LinkType, Owner, GameResources};
     use crate::hud::PlayerControls;
@@ -70,13 +69,8 @@ mod tests {
             NetworkNode {
                 ip: 10,
                 coord: client_coord,
-                node_type: NodeType::Client,
+                node_type: NodeType::Router,
                 owner: Owner::Player,
-                buffer: VecDeque::new(),
-                max_buffer_size: 10,
-                cpu_processing_rate: 1,
-                firewall_rules: Vec::new(),
-                health: 100.0,
             },
             RoutingTable::default(),
         )).id();
@@ -87,11 +81,6 @@ mod tests {
                 coord: router_coord,
                 node_type: NodeType::Router,
                 owner: Owner::Player,
-                buffer: VecDeque::new(),
-                max_buffer_size: 10,
-                cpu_processing_rate: 1,
-                firewall_rules: Vec::new(),
-                health: 100.0,
             },
             RoutingTable::default(),
         )).id();
@@ -102,11 +91,6 @@ mod tests {
                 coord: dc_coord,
                 node_type: NodeType::DataCenter,
                 owner: Owner::Neutral,
-                buffer: VecDeque::new(),
-                max_buffer_size: 10,
-                cpu_processing_rate: 1,
-                firewall_rules: Vec::new(),
-                health: 100.0,
             },
             RoutingTable::default(),
         )).id();

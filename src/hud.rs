@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use crate::simulation::{NetworkNode, NetworkLink, Owner, NodeType, LinkType, PacketType, GameResources, RoutingTable, FirewallRule, FirewallAction, Packet};
+use crate::simulation::{NetworkNode, NetworkLink, Owner, NodeType, LinkType, GameResources, RoutingTable, CityDominance};
 use crate::hex::{HexCoord, HexTile, HexTileType};
 use crate::rendering::MainCamera;
 
@@ -20,9 +20,6 @@ pub enum SelectedTool {
     Inspect,
     BuildCopperLink,
     BuildFiberLink,
-    UpgradeCpu,
-    DeployWorm,
-    DeployDdos,
 }
 
 pub struct HudPlugin;
@@ -40,7 +37,7 @@ fn draw_hud(
     mut contexts: EguiContexts,
     mut game_resources: ResMut<GameResources>,
     mut player_controls: ResMut<PlayerControls>,
-    mut nodes: Query<(Entity, &mut NetworkNode, &RoutingTable)>,
+    mut nodes: Query<(Entity, &mut NetworkNode, &RoutingTable, Option<&CityDominance>)>,
     tiles: Query<&HexTile>,
     mut commands: Commands,
     mut ip_sequence: Local<u32>,
@@ -71,12 +68,9 @@ fn draw_hud(
     egui::TopBottomPanel::bottom("guidance_panel").show(ctx, |ui| {
         ui.horizontal(|ui| {
             let guide_text = match player_controls.active_tool {
-                SelectedTool::Inspect => "🔍 INSPECT: Hover over hexes to see coordinates. Click a node to view its buffer, health, and rules.",
+                SelectedTool::Inspect => "🔍 INSPECT: Hover over hexes to see coordinates. Click a node to inspect it.",
                 SelectedTool::BuildCopperLink => "🔌 LINK: Click one of your nodes (teal), then click an adjacent node to lay a Copper Cable.",
                 SelectedTool::BuildFiberLink => "⚡ FIBER: Click one of your nodes (teal), then click an adjacent node to lay a high-speed Fiber Cable.",
-                SelectedTool::UpgradeCpu => "🚀 UPGRADE: Click one of your owned nodes to increase its CPU packet processing speed.",
-                SelectedTool::DeployWorm => "🐛 WORM: Click your source node, then click an adjacent target node to infect and seize it.",
-                SelectedTool::DeployDdos => "💥 DDoS: Click your source node, then click an adjacent target node to flood its buffer queue.",
             };
             ui.colored_label(egui::Color32::from_rgb(255, 215, 100), guide_text);
         });
@@ -133,26 +127,12 @@ fn draw_hud(
             player_controls.active_tool = SelectedTool::BuildFiberLink;
         }
 
-        if ui.selectable_label(
-            player_controls.active_tool == SelectedTool::UpgradeCpu,
-            "🚀 Upgrade Node CPU (100 BW)"
-        ).clicked() {
-            player_controls.active_tool = SelectedTool::UpgradeCpu;
-        }
-
-        ui.separator();
-        ui.label("Network Attack Vector:");
-        if ui.selectable_label(player_controls.active_tool == SelectedTool::DeployWorm, "🐛 Worm Hacking (30 BW)").clicked() {
-            player_controls.active_tool = SelectedTool::DeployWorm;
-        }
-        if ui.selectable_label(player_controls.active_tool == SelectedTool::DeployDdos, "💥 DDoS Overload (20 BW)").clicked() {
-            player_controls.active_tool = SelectedTool::DeployDdos;
-        }
+        // No CPU upgrades or attack vectors in simplified version
 
         // 3. Purchase Nodes on selected empty hex
         if let Some(coord) = player_controls.selected_hex {
             // Check if hex is empty
-            let is_empty = !nodes.iter().any(|(_, node, _)| node.coord == coord);
+            let is_empty = !nodes.iter().any(|(_, node, _, _)| node.coord == coord);
             
             // Check if tile is buyable (e.g. not water)
             let tile = tiles.iter().find(|t| t.coord == coord);
@@ -177,38 +157,6 @@ fn draw_hud(
                                 coord,
                                 node_type: NodeType::Router,
                                 owner: Owner::Player,
-                                buffer: std::collections::VecDeque::new(),
-                                max_buffer_size: 15,
-                                cpu_processing_rate: 3,
-                                firewall_rules: Vec::new(),
-                                health: 100.0,
-                            },
-                            RoutingTable::default(),
-                            Transform::from_translation(world_pos),
-                        ));
-                    }
-                }
-
-                if ui.button("🏡 Buy Client Node (100 BW)").clicked() {
-                    if game_resources.player_bandwidth >= 100.0 {
-                        game_resources.player_bandwidth -= 100.0;
-                        if *ip_sequence == 0 {
-                            *ip_sequence = 30;
-                        }
-                        *ip_sequence += 1;
-
-                        let world_pos = coord.to_world(1.0);
-                        commands.spawn((
-                            NetworkNode {
-                                ip: *ip_sequence,
-                                coord,
-                                node_type: NodeType::Client,
-                                owner: Owner::Player,
-                                buffer: std::collections::VecDeque::new(),
-                                max_buffer_size: 15,
-                                cpu_processing_rate: 2,
-                                firewall_rules: Vec::new(),
-                                health: 100.0,
                             },
                             RoutingTable::default(),
                             Transform::from_translation(world_pos),
@@ -227,10 +175,10 @@ fn draw_hud(
         }
     });
 
-    // 3. Right Panel: Inspector & Firewall Rules
+    // 3. Right Panel: Inspector
     if let Some(selected_entity) = player_controls.selected_node {
         egui::SidePanel::right("inspector_panel").width_range(260.0..=300.0).show(ctx, |ui| {
-            if let Ok((_, mut node, routing_table)) = nodes.get_mut(selected_entity) {
+            if let Ok((_, mut node, routing_table, city_dom)) = nodes.get_mut(selected_entity) {
                 ui.heading(format!("{:?} Node", node.node_type));
                 ui.separator();
 
@@ -244,53 +192,77 @@ fn draw_hud(
                 };
                 ui.label(egui::RichText::new(format!("Owner: {:?}", node.owner)).color(owner_color).strong());
                 
-                ui.add(egui::ProgressBar::new(node.health / 100.0)
-                    .text(format!("Health: {:.1}%", node.health)));
+                if let Some(dom) = city_dom {
+                    ui.separator();
+                    ui.colored_label(egui::Color32::from_rgb(255, 215, 0), "City Dominance & Control");
+                    ui.label(format!("Yield: {:.1} BW/sec", dom.total_payout_rate));
+                    ui.label(format!("Player Share: {:.2} BW/sec", dom.player_control_pct * dom.total_payout_rate));
+                    ui.label(format!("AI Share: {:.2} BW/sec", dom.ai_control_pct * dom.total_payout_rate));
+                    
+                    let player_pct = dom.player_control_pct;
+                    let ai_pct = dom.ai_control_pct;
 
-                ui.label(format!("Processing Speed: {} packets/tick", node.cpu_processing_rate));
-                ui.label(format!("Buffer Congestion: {}/{} packets", node.buffer.len(), node.max_buffer_size));
-
-                ui.separator();
-                ui.heading("Firewall Settings");
-                
-                if node.firewall_rules.is_empty() {
-                    ui.label("No active packet drop rules.");
-                } else {
-                    let mut rules_to_remove = Vec::new();
-                    for (i, rule) in node.firewall_rules.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            let type_str = rule.packet_type.map_or("ANY".to_string(), |t| format!("{:?}", t));
-                            ui.label(format!("Drop type = {}", type_str));
-                            if ui.button("x").clicked() {
-                                rules_to_remove.push(i);
+                    // Donut Chart
+                    ui.vertical_centered(|ui| {
+                        let size = egui::vec2(120.0, 120.0);
+                        let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
+                        let center = rect.center();
+                        let radius = 50.0;
+                        
+                        let painter = ui.painter();
+                        
+                        let draw_sector = |painter: &egui::Painter, center: egui::Pos2, radius: f32, start_angle: f32, end_angle: f32, color: egui::Color32| {
+                            let num_points = 24;
+                            let mut points = vec![center];
+                            for i in 0..=num_points {
+                                let t = i as f32 / num_points as f32;
+                                let angle = start_angle + t * (end_angle - start_angle);
+                                let x = center.x + radius * angle.cos();
+                                let y = center.y + radius * angle.sin();
+                                points.push(egui::pos2(x, y));
                             }
-                        });
-                    }
+                            painter.add(egui::Shape::convex_polygon(points, color, egui::Stroke::NONE));
+                        };
+                        
+                        if player_pct > 0.0 || ai_pct > 0.0 {
+                            let start_angle = -std::f32::consts::FRAC_PI_2;
+                            let player_sweep = player_pct * std::f32::consts::TAU;
+                            
+                            if player_pct > 0.0 {
+                                draw_sector(painter, center, radius, start_angle, start_angle + player_sweep, egui::Color32::from_rgb(0, 240, 255));
+                            }
+                            if ai_pct > 0.0 {
+                                draw_sector(painter, center, radius, start_angle + player_sweep, start_angle + std::f32::consts::TAU, egui::Color32::from_rgb(255, 90, 140));
+                            }
+                        } else {
+                            painter.circle_filled(center, radius, egui::Color32::from_gray(60));
+                        }
+                        
+                        // Donut inner hole
+                        painter.circle_filled(center, radius * 0.5, egui::Color32::from_rgb(8, 28, 40));
+                    });
 
-                    for i in rules_to_remove.into_iter().rev() {
-                        node.firewall_rules.remove(i);
-                    }
+                    ui.label(format!("Player Control: {:.1}%", player_pct * 100.0));
+                    ui.label(format!("AI Control: {:.1}%", ai_pct * 100.0));
+                    ui.separator();
+                    ui.label(format!("Player Dominance: {:.1}", dom.player_dominance));
+                    ui.label(format!("AI Dominance: {:.1}", dom.ai_dominance));
                 }
 
-                if node.owner == Owner::Player {
+                if node.node_type == NodeType::Router && node.owner == Owner::Player {
                     ui.separator();
-                    ui.label("Add Filter Rule:");
-                    ui.horizontal(|ui| {
-                        if ui.button("Drop DDoS").clicked() {
-                            node.firewall_rules.push(FirewallRule {
-                                src_ip: None,
-                                packet_type: Some(PacketType::Ddos),
-                                action: FirewallAction::Drop,
-                            });
+                    // Connected back to Player's Main DC (IP 10)
+                    let is_connected = routing_table.route_costs.contains_key(&10) || node.ip == 10;
+                    if is_connected {
+                        if ui.button("⚡ Upgrade to Data Center (120 BW)").clicked() {
+                            if game_resources.player_bandwidth >= 120.0 {
+                                game_resources.player_bandwidth -= 120.0;
+                                node.node_type = NodeType::DataCenter;
+                            }
                         }
-                        if ui.button("Drop Worms").clicked() {
-                            node.firewall_rules.push(FirewallRule {
-                                src_ip: None,
-                                packet_type: Some(PacketType::Worm),
-                                action: FirewallAction::Drop,
-                            });
-                        }
-                    });
+                    } else {
+                        ui.colored_label(egui::Color32::from_rgb(255, 90, 90), "⚠️ Cannot Upgrade: Lay wire back to Main Data Center first!");
+                    }
                 }
 
                 ui.separator();
@@ -316,9 +288,8 @@ fn handle_mouse_picking(
     camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut player_controls: ResMut<PlayerControls>,
     mut game_resources: ResMut<GameResources>,
-    mut nodes: Query<(Entity, &mut NetworkNode, &Transform)>,
+    nodes: Query<(Entity, &mut NetworkNode, &Transform)>,
     links: Query<(Entity, &NetworkLink)>,
-    mut packet_id_seq: Local<u32>,
     mut contexts: EguiContexts,
 ) {
     if contexts.ctx_mut().wants_pointer_input() {
@@ -356,13 +327,13 @@ fn handle_mouse_picking(
             let mut clicked_node = None;
             for (entity, node, _) in nodes.iter() {
                 if node.coord == clicked_coord {
-                    clicked_node = Some((entity, node.ip, node.owner));
+                    clicked_node = Some((entity, node.owner));
                     break;
                 }
             }
 
             // Process actions if a node is clicked
-            if let Some((clicked_entity, clicked_ip, clicked_owner)) = clicked_node {
+            if let Some((clicked_entity, clicked_owner)) = clicked_node {
                 match player_controls.active_tool {
                     SelectedTool::Inspect => {
                         player_controls.selected_node = Some(clicked_entity);
@@ -407,80 +378,7 @@ fn handle_mouse_picking(
                             }
                         }
                     }
-                    SelectedTool::UpgradeCpu => {
-                        if clicked_owner == Owner::Player && game_resources.player_bandwidth >= 100.0 {
-                            game_resources.player_bandwidth -= 100.0;
-                            if let Ok((_, mut node, _)) = nodes.get_mut(clicked_entity) {
-                                node.cpu_processing_rate += 1;
-                            }
-                        }
-                    }
-                    SelectedTool::DeployWorm => {
-                        if game_resources.player_bandwidth >= 30.0 {
-                            if let Some(start_entity) = player_controls.link_start_node {
-                                let mut start_ip = 0;
-                                if let Ok((_, start_node, _)) = nodes.get(start_entity) {
-                                    start_ip = start_node.ip;
-                                }
-
-                                let adjacent_link = links.iter().find(|(_, link)| {
-                                    (link.node_a == start_entity && link.node_b == clicked_entity)
-                                        || (link.node_a == clicked_entity && link.node_b == start_entity)
-                                });
-
-                                if let Some((link_entity, _)) = adjacent_link {
-                                    game_resources.player_bandwidth -= 30.0;
-                                    *packet_id_seq += 1;
-                                    commands.spawn(Packet {
-                                        id: *packet_id_seq,
-                                        src_ip: start_ip,
-                                        dst_ip: clicked_ip,
-                                        packet_type: PacketType::Worm,
-                                        payload_size: 256,
-                                        link: link_entity,
-                                        progress: 0.0,
-                                        from_node: start_entity,
-                                        to_node: clicked_entity,
-                                        spawn_tick: game_resources.game_tick,
-                                    });
-                                }
-                            }
-                        }
-                        player_controls.link_start_node = None;
-                    }
-                    SelectedTool::DeployDdos => {
-                        if game_resources.player_bandwidth >= 20.0 {
-                            if let Some(start_entity) = player_controls.link_start_node {
-                                let mut start_ip = 0;
-                                if let Ok((_, start_node, _)) = nodes.get(start_entity) {
-                                    start_ip = start_node.ip;
-                                }
-
-                                let adjacent_link = links.iter().find(|(_, link)| {
-                                    (link.node_a == start_entity && link.node_b == clicked_entity)
-                                        || (link.node_a == clicked_entity && link.node_b == start_entity)
-                                });
-
-                                if let Some((link_entity, _)) = adjacent_link {
-                                    game_resources.player_bandwidth -= 20.0;
-                                    *packet_id_seq += 1;
-                                    commands.spawn(Packet {
-                                        id: *packet_id_seq,
-                                        src_ip: start_ip,
-                                        dst_ip: clicked_ip,
-                                        packet_type: PacketType::Ddos,
-                                        payload_size: 64,
-                                        link: link_entity,
-                                        progress: 0.0,
-                                        from_node: start_entity,
-                                        to_node: clicked_entity,
-                                        spawn_tick: game_resources.game_tick,
-                                    });
-                                }
-                            }
-                        }
-                        player_controls.link_start_node = None;
-                    }
+                    // CPU upgrades and network attack logic removed in simplified version
                 }
             } else {
                 player_controls.selected_node = None;

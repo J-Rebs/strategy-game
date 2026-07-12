@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy::math::primitives::Cuboid;
-use crate::simulation::{NetworkNode, NetworkLink, Packet, Owner, NodeType, LinkType};
+use crate::simulation::{NetworkNode, NetworkLink, Packet, Owner, NodeType, LinkType, CityDominance, CitySize};
 use crate::hex::{HexCoord, create_hex_prism_mesh, HexTile, HexTileType};
 
 // --- Marker Components ---
@@ -383,12 +383,12 @@ fn sync_hex_tiles(
 // --- Sync Node Visuals (Bioluminescent Coral structures) ---
 fn sync_node_visuals(
     mut commands: Commands,
-    nodes: Query<(Entity, &NetworkNode, &Transform), Changed<NetworkNode>>,
+    nodes: Query<(Entity, &NetworkNode, &Transform, Option<&CityDominance>), Changed<NetworkNode>>,
     mesh_query: Query<(Entity, &NodeMeshMarker)>,
     mut meshes: ResMut<Assets<Mesh>>,
     materials: Res<GameMaterials>,
 ) {
-    for (node_entity, node, transform) in nodes.iter() {
+    for (node_entity, node, transform, city_dom) in nodes.iter() {
         for (mesh_entity, marker) in mesh_query.iter() {
             if marker.node_entity == node_entity {
                 commands.entity(mesh_entity).despawn_recursive();
@@ -407,27 +407,25 @@ fn sync_node_visuals(
             materials.ai_packet_mat.clone()
         };
 
+        let scale = if let Some(dom) = city_dom {
+            match dom.size {
+                CitySize::Small => Vec3::splat(0.7),
+                CitySize::Medium => Vec3::splat(1.0),
+                CitySize::Large => Vec3::splat(1.4),
+            }
+        } else {
+            Vec3::ONE
+        };
+
+        let mut target_transform = *transform;
+        target_transform.scale = scale;
+
         commands.spawn((
-            SpatialBundle::from_transform(*transform),
+            SpatialBundle::from_transform(target_transform),
             NodeMeshMarker { node_entity },
         )).with_children(|parent| {
             match node.node_type {
-                NodeType::Client => {
-                    // Sea Anemone: Stacked disks with glowing central bulbs
-                    parent.spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(Cuboid::new(0.5, 0.25, 0.5))),
-                        material: base_mat.clone(),
-                        transform: Transform::from_xyz(0.0, 0.125, 0.0),
-                        ..default()
-                    });
-                    parent.spawn(PbrBundle {
-                        mesh: meshes.add(Mesh::from(Cuboid::new(0.3, 0.3, 0.3))),
-                        material: glow_mat.clone(),
-                        transform: Transform::from_xyz(0.0, 0.35, 0.0),
-                        ..default()
-                    });
-                }
-                NodeType::Router | NodeType::Firewall => {
+                NodeType::Router => {
                     // Spiral Coral Spire: thin offset segments
                     parent.spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(Cuboid::new(0.25, 0.8, 0.25))),
@@ -442,7 +440,7 @@ fn sync_node_visuals(
                         ..default()
                     });
                 }
-                NodeType::DataCenter | NodeType::Ixp => {
+                NodeType::DataCenter => {
                     // Giant bioluminescent crystal clusters
                     parent.spawn(PbrBundle {
                         mesh: meshes.add(Mesh::from(Cuboid::new(0.4, 1.2, 0.4))),
@@ -460,6 +458,27 @@ fn sync_node_visuals(
                         mesh: meshes.add(Mesh::from(Cuboid::new(0.2, 0.4, 0.2))),
                         material: glow_mat.clone(),
                         transform: Transform::from_xyz(0.2, 1.45, 0.0),
+                        ..default()
+                    });
+                }
+                NodeType::City => {
+                    // Futuristic undersea tower cluster: central cuboid spire with outer spires
+                    parent.spawn(PbrBundle {
+                        mesh: meshes.add(Mesh::from(Cuboid::new(0.4, 1.4, 0.4))),
+                        material: base_mat.clone(),
+                        transform: Transform::from_xyz(0.0, 0.7, 0.0),
+                        ..default()
+                    });
+                    parent.spawn(PbrBundle {
+                        mesh: meshes.add(Mesh::from(Cuboid::new(0.2, 0.8, 0.2))),
+                        material: glow_mat.clone(),
+                        transform: Transform::from_xyz(-0.25, 0.4, -0.25),
+                        ..default()
+                    });
+                    parent.spawn(PbrBundle {
+                        mesh: meshes.add(Mesh::from(Cuboid::new(0.2, 0.8, 0.2))),
+                        material: glow_mat.clone(),
+                        transform: Transform::from_xyz(0.25, 0.4, 0.25),
                         ..default()
                     });
                 }
