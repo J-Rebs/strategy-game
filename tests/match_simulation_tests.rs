@@ -229,7 +229,10 @@ fn run_simulated_game(starting_bandwidth: f32) -> Option<u32> {
         Transform::from_translation(HexCoord::new(0, 0).to_world(1.0)),
     )).id();
 
-    // Set starting player/AI bandwidth accounts
+    // Run startup systems to initialize components and resource states
+    app.update();
+
+    // Set starting player/AI bandwidth accounts (overriding startup initial values)
     {
         let mut resources = app.world_mut().resource_mut::<GameResources>();
         resources.player_bandwidth = starting_bandwidth;
@@ -242,8 +245,8 @@ fn run_simulated_game(starting_bandwidth: f32) -> Option<u32> {
     let mut connected_medium = false;
     let mut upgraded_router = false;
 
-    // Run simulation loop up to 6000 ticks (100 seconds)
-    for tick in 1..=6000 {
+    // Run remaining simulation ticks (tick 1 is already run)
+    for tick in 2..=6000 {
         app.update();
 
         // Retrieve resources and check if we can make a move
@@ -335,6 +338,9 @@ fn test_multiteam_buyout_elimination() {
         owner: Owner::AI1,
     }).id();
 
+    // Run startup systems to initialize resource states
+    app.update();
+
     // Trigger AI1 elimination
     {
         let mut resources = app.world_mut().resource_mut::<GameResources>();
@@ -378,6 +384,9 @@ fn test_buyout_lock_and_timing() {
         },
         strategy_game::simulation::RoutingTable::default(),
     )).id();
+
+    // Run startup systems to initialize resource states
+    app.update();
 
     // 1. At tick 0: AI1 has 1000 BW (enough to buy out player) but buyout is locked
     {

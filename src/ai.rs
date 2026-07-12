@@ -1,5 +1,6 @@
 use bevy::prelude::*;
-use crate::simulation::{NetworkNode, NetworkLink, Owner, LinkType, GameResources, RoutingTable, NodeType, CityDominance};
+use crate::simulation::{NetworkNode, NetworkLink, Owner, LinkType, GameResources, RoutingTable, NodeType, CityDominance, GameConfig};
+use crate::hex::HexCoord;
 
 // =========================================================================
 // PACKETCOMMAND AI PLUG-IN
@@ -22,6 +23,8 @@ fn ai_decision_loop(
     mut commands: Commands,
     // Access game resource values (mutable because AI consumes bandwidth and sets eliminations)
     mut game_resources: ResMut<GameResources>,
+    // Access global configuration parameters
+    config: Res<GameConfig>,
     // Queries all nodes: Entity ID, NetworkNode component (mutable to update type), Transform position, RoutingTable
     mut nodes: Query<(Entity, &mut NetworkNode, &Transform, &RoutingTable)>,
     // Queries all wires/links in the network
@@ -91,7 +94,7 @@ fn ai_decision_loop(
                 }
                 
                 // Get dynamic buyout cost (cheaper if they control less map)
-                let cost = crate::simulation::get_buyout_cost(target, &cities_query);
+                let cost = crate::simulation::get_buyout_cost(target, &cities_query, &config);
                 if cost < min_buyout_cost {
                     min_buyout_cost = cost;
                     target_to_buyout = Some(target);
@@ -131,7 +134,7 @@ fn ai_decision_loop(
             if node.owner == current_ai {
                 // Check if the node is linked back to the Main DC via OSPF path
                 let is_connected_to_main = routing.route_costs.contains_key(&main_dc_ip) || node.ip == main_dc_ip;
-                ai_nodes.push((entity, node.ip, node.node_type, transform.translation, is_connected_to_main));
+                ai_nodes.push((entity, node.ip, node.node_type, transform.translation, is_connected_to_main, node.coord));
             } else if node.node_type == NodeType::City {
                 target_cities.push((entity, transform.translation));
             }
@@ -141,11 +144,11 @@ fn ai_decision_loop(
             continue;
         }
 
-        // Upgrading a router to a Data Center costs 120 BW and permits branching links.
-        let upgrade_cost = 120.0;
+        // Upgrading a router to a Data Center permits branching links.
+        let upgrade_cost = config.router_upgrade_cost;
         if current_bw >= upgrade_cost {
             let mut upgraded = false;
-            for (entity, _, node_type, _, is_connected_to_main) in &ai_nodes {
+            for (entity, _, node_type, _, is_connected_to_main, _) in &ai_nodes {
                 if *node_type == NodeType::Router && *is_connected_to_main {
                     // Call get_mut to modify Bevy's NetworkNode component value
                     if let Ok((_, mut node, _, _)) = nodes.get_mut(*entity) {
@@ -167,16 +170,95 @@ fn ai_decision_loop(
         }
 
         // -------------------------------------------------------------------------
-        // DECISION 3: MAP EXPANSION (Lay Wires)
+        // DECISION 3: PLACE NEW ROUTERS (Walk towards cities)
         // -------------------------------------------------------------------------
-        // Laying a new copper link costs 60 BW. The AI searches for the closest
+        // Placing a new router costs config.router_placement_cost.
+        // The AI searches for an empty hex tile adjacent to its network that brings it closer to cities.
+        let router_cost = config.router_placement_cost;
+        if current_bw >= router_cost {
+            let mut best_hex = None;
+            let mut min_city_dist = f32::MAX;
+            let mut parent_node_entity = None;
+
+            // Gather all occupied coordinates
+            let occupied_coords: std::collections::HashSet<HexCoord> = nodes.iter().map(|(_, n, _, _)| n.coord).collect();
+
+            // Iterate over all coordinates on the board
+            for q in -3_i32..=3_i32 {
+                for r in -3_i32..=3_i32 {
+                    if (q + r).abs() <= 3 {
+                        let candidate_coord = HexCoord::new(q, r);
+                        if occupied_coords.contains(&candidate_coord) {
+                            continue;
+                        }
+
+                        // Check if this candidate is adjacent to any of our connected nodes
+                        for &(ai_entity, _, _, _, is_connected_to_main, parent_coord) in &ai_nodes {
+                            if is_connected_to_main {
+                                if parent_coord.distance(&candidate_coord) == 1 {
+                                    // It is adjacent! Now check distance to closest neutral city
+                                    for &(_, city_pos) in &target_cities {
+                                        let dist = candidate_coord.to_world(1.0).distance(city_pos);
+                                        if dist < min_city_dist {
+                                            min_city_dist = dist;
+                                            best_hex = Some(candidate_coord);
+                                            parent_node_entity = Some(ai_entity);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let (Some(new_coord), Some(parent_entity)) = (best_hex, parent_node_entity) {
+                // Deduct cost
+                match current_ai {
+                    Owner::AI1 => game_resources.ai1_bandwidth -= router_cost,
+                    Owner::AI2 => game_resources.ai2_bandwidth -= router_cost,
+                    Owner::AI3 => game_resources.ai3_bandwidth -= router_cost,
+                    _ => {}
+                }
+
+                // Generate a pseudo-random unique IP for this AI
+                let new_ip = 1000 + (tick % 500) as u32 + (current_ai as u32 * 100);
+
+                // Spawn the new router node
+                let new_router = commands.spawn((
+                    NetworkNode {
+                        ip: new_ip,
+                        coord: new_coord,
+                        node_type: NodeType::Router,
+                        owner: current_ai,
+                    },
+                    RoutingTable::default(),
+                    Transform::from_translation(new_coord.to_world(1.0)),
+                )).id();
+
+                // Connect the new router to the parent node
+                commands.spawn(NetworkLink {
+                    node_a: parent_entity,
+                    node_b: new_router,
+                    link_type: LinkType::Copper,
+                    is_active: true,
+                });
+
+                continue; // Action consumed this tick
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // DECISION 4: MAP EXPANSION (Lay Wires)
+        // -------------------------------------------------------------------------
+        // Laying a new copper link. The AI searches for the closest
         // neutral city within reach and wires to it.
-        let link_cost = 60.0;
+        let link_cost = config.copper_link_cost;
         if current_bw >= link_cost {
             let mut best_connection = None;
             let mut min_distance = f32::MAX;
 
-            for &(ai_entity, _, _, ai_pos, _) in &ai_nodes {
+            for &(ai_entity, _, _, ai_pos, _, _) in &ai_nodes {
                 for &(city_entity, city_pos) in &target_cities {
                     // Ensure a wire does not already exist
                     let mut link_exists = false;

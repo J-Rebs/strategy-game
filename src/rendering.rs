@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 use bevy::math::primitives::Cuboid;
+use bevy::render::view::screenshot::ScreenshotManager;
+use bevy::window::PrimaryWindow;
 use crate::simulation::{NetworkNode, NetworkLink, Packet, Owner, NodeType, CityDominance, CitySize};
 use crate::hex::{HexCoord, create_hex_prism_mesh, HexTile, HexTileType};
 
@@ -113,6 +115,7 @@ impl Plugin for RenderingPlugin {
                 sync_packet_visuals,
                 update_highlights,
                 update_link_preview,
+                take_screenshots,
             ));
     }
 }
@@ -804,6 +807,28 @@ fn update_link_preview(
                         LinkPreviewMarker,
                     ));
                 }
+            }
+        }
+    }
+}
+
+/// System: Automatically captures screenshots of the window at specific ticks to verify UI layout.
+fn take_screenshots(
+    main_window: Query<Entity, With<PrimaryWindow>>,
+    mut screenshot_manager: ResMut<ScreenshotManager>,
+    game_res: Res<crate::simulation::GameResources>,
+    mut taken_cycles: Local<std::collections::HashSet<u64>>,
+) {
+    let tick = game_res.game_tick;
+    // Capture ticks: 60 (~1s), 600 (~10s), 3000 (~50s), 18005 (~5m)
+    let capture_ticks = [60, 600, 3000, 18005];
+    for &target_tick in &capture_ticks {
+        if tick == target_tick && !taken_cycles.contains(&target_tick) {
+            if let Ok(window_entity) = main_window.get_single() {
+                let path = format!("docs/assets/screenshot_{}.png", target_tick);
+                info!("Saving visual screenshot for tick {} to {}", target_tick, path);
+                let _ = screenshot_manager.save_screenshot_to_disk(window_entity, path);
+                taken_cycles.insert(target_tick);
             }
         }
     }

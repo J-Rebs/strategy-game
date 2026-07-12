@@ -180,6 +180,30 @@ pub struct RoutingTable {
     pub route_costs: HashMap<u32, u32>,
 }
 
+/// ECS Resource: Global configuration parameters for game balance tuning.
+#[derive(Resource, Debug, Clone, Reflect)]
+pub struct GameConfig {
+    pub starting_bandwidth: f32,
+    pub router_upgrade_cost: f32,
+    pub copper_link_cost: f32,
+    pub router_placement_cost: f32,
+    pub buyout_base_cost: f32,
+    pub buyout_scaling_factor: f32,
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        Self {
+            starting_bandwidth: 100.0,
+            router_upgrade_cost: 150.0,
+            copper_link_cost: 60.0,
+            router_placement_cost: 70.0,
+            buyout_base_cost: 100.0,
+            buyout_scaling_factor: 850.0,
+        }
+    }
+}
+
 /// ECS Resource: Global singletons storing shared game state.
 ///
 /// Resources are registered using `app.init_resource::<T>()` and accessed in systems using
@@ -200,10 +224,10 @@ pub struct GameResources {
 impl Default for GameResources {
     fn default() -> Self {
         Self {
-            player_bandwidth: 200.0,
-            ai1_bandwidth: 200.0,
-            ai2_bandwidth: 200.0,
-            ai3_bandwidth: 200.0,
+            player_bandwidth: 0.0,
+            ai1_bandwidth: 0.0,
+            ai2_bandwidth: 0.0,
+            ai3_bandwidth: 0.0,
             player_eliminated: false,
             ai1_eliminated: false,
             ai2_eliminated: false,
@@ -211,6 +235,17 @@ impl Default for GameResources {
             game_tick: 0,
         }
     }
+}
+
+/// Startup System: Populates the initial resources based on the global config.
+fn init_game_resources(
+    config: Res<GameConfig>,
+    mut resources: ResMut<GameResources>,
+) {
+    resources.player_bandwidth = config.starting_bandwidth;
+    resources.ai1_bandwidth = config.starting_bandwidth;
+    resources.ai2_bandwidth = config.starting_bandwidth;
+    resources.ai3_bandwidth = config.starting_bandwidth;
 }
 
 // -------------------------------------------------------------------------
@@ -222,7 +257,8 @@ pub struct SimulationPlugin;
 impl Plugin for SimulationPlugin {
     /// Registers all component structures for Bevy's reflection engine and adds update systems.
     fn build(&self, app: &mut App) {
-        app.init_resource::<GameResources>()
+        app.init_resource::<GameConfig>()
+            .init_resource::<GameResources>()
             .register_type::<Owner>()
             .register_type::<LinkType>()
             .register_type::<NodeType>()
@@ -231,8 +267,10 @@ impl Plugin for SimulationPlugin {
             .register_type::<NetworkNode>()
             .register_type::<NetworkLink>()
             .register_type::<RoutingTable>()
+            .register_type::<GameConfig>()
             .register_type::<GameResources>()
             .register_type::<CityDominance>()
+            .add_systems(Startup, init_game_resources)
             // `.add_systems(Update, ...)` registers these systems to run every tick of the update loop.
             // `.chain()` ensures they run sequentially in the order listed, preventing race conditions.
             .add_systems(Update, (
@@ -692,9 +730,9 @@ pub fn get_map_control(team: Owner, cities: &Query<&CityDominance>) -> f32 {
 /// Calculates the dynamic buyout cost of a team's Main Data Center.
 ///
 /// Buying out a target gets cheaper as they control less map territory.
-pub fn get_buyout_cost(team: Owner, cities: &Query<&CityDominance>) -> f32 {
+pub fn get_buyout_cost(team: Owner, cities: &Query<&CityDominance>, config: &GameConfig) -> f32 {
     let control = get_map_control(team, cities);
-    150.0 + control * 850.0
+    config.buyout_base_cost + control * config.buyout_scaling_factor
 }
 
 /// System: Resets node ownership to neutral once their team is bought out.

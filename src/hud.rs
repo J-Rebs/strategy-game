@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
-use crate::simulation::{GameResources, NetworkNode, NetworkLink, RoutingTable, NodeType, LinkType, Owner, CityDominance};
+use crate::simulation::{GameResources, NetworkNode, NetworkLink, RoutingTable, NodeType, LinkType, Owner, CityDominance, GameConfig};
 use crate::hex::HexCoord;
 use crate::rendering::MainCamera;
 
@@ -56,6 +56,7 @@ fn draw_hud(
     mut player_controls: ResMut<PlayerControls>,
     mut nodes: Query<(Entity, &mut NetworkNode, &RoutingTable, Option<&CityDominance>)>,
     cities_query: Query<&CityDominance>,
+    config: Res<GameConfig>,
 ) {
     let ctx = contexts.ctx_mut();
 
@@ -120,8 +121,8 @@ fn draw_hud(
         ui.separator();
 
         ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::Inspect, "🔍 Inspect Node");
-        ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::BuildRouter, "📟 Buy Router (60 BW)");
-        ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::LayWire, "🔗 Lay Wire (50 BW)");
+        ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::BuildRouter, &format!("📟 Buy Router ({:.0} BW)", config.router_placement_cost));
+        ui.selectable_value(&mut player_controls.selected_tool, SelectedTool::LayWire, &format!("🔗 Lay Wire ({:.0} BW)", config.copper_link_cost));
 
         ui.separator();
         ui.heading("Quick Guide");
@@ -231,9 +232,9 @@ fn draw_hud(
                     ui.separator();
                     let is_connected = routing_table.route_costs.contains_key(&10) || node.ip == 10;
                     if is_connected {
-                        if ui.button("⚡ Upgrade to Data Center (120 BW)").clicked() {
-                            if game_resources.player_bandwidth >= 120.0 {
-                                game_resources.player_bandwidth -= 120.0;
+                        if ui.button(format!("⚡ Upgrade to Data Center ({:.0} BW)", config.router_upgrade_cost)).clicked() {
+                            if game_resources.player_bandwidth >= config.router_upgrade_cost {
+                                game_resources.player_bandwidth -= config.router_upgrade_cost;
                                 node.node_type = NodeType::DataCenter;
                             }
                         }
@@ -244,7 +245,7 @@ fn draw_hud(
 
                 if node.node_type == NodeType::DataCenter && node.owner != Owner::Player && node.owner != Owner::Neutral {
                     let target_owner = node.owner;
-                    let cost = crate::simulation::get_buyout_cost(target_owner, &cities_query);
+                    let cost = crate::simulation::get_buyout_cost(target_owner, &cities_query, &config);
                     ui.separator();
                     ui.colored_label(egui::Color32::from_rgb(200, 140, 40), "🏢 Target Main Data Center");
                     ui.label(format!("Buyout Cost: {:.1} BW", cost));
@@ -330,6 +331,7 @@ fn handle_mouse_picking(
     links: Query<(Entity, &NetworkLink)>,
     mut contexts: EguiContexts,
     mut ip_sequence: Local<u32>,
+    config: Res<GameConfig>,
 ) {
     // If the user's cursor is hovering over an egui panel, bypass game board raycasting
     if contexts.ctx_mut().wants_pointer_input() {
@@ -386,8 +388,8 @@ fn handle_mouse_picking(
                 }
                 SelectedTool::BuildRouter => {
                     if clicked_node.is_none() {
-                        // Enforce placement rule: Router cost is 60 BW and must link adjacent to active player subnet
-                        let cost = 60.0;
+                        // Enforce placement rule
+                        let cost = config.router_placement_cost;
                         let is_adjacent_to_player = nodes.iter().any(|(_, n, _)| {
                             n.owner == Owner::Player && n.coord.distance(&hex_coord) == 1
                         });
@@ -438,8 +440,8 @@ fn handle_mouse_picking(
                 SelectedTool::LayWire => {
                     if let Some((clicked_entity, _)) = clicked_node {
                         if let Some(source_entity) = player_controls.selected_node {
-                            // Enforce building rules: Cost is 50 BW, only connecting to adjacent tiles
-                            let cost = 50.0;
+                            // Enforce building rules
+                            let cost = config.copper_link_cost;
                             if source_entity != clicked_entity {
                                 if let Ok((_, src_node, _)) = nodes.get(source_entity) {
                                     if src_node.coord.distance(&hex_coord) == 1 {
